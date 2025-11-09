@@ -25,6 +25,15 @@
 
 <br />
 
+> [!WARNING]
+> **🚧 Under Active Development**
+>
+> This library is currently in early development and **not recommended for production use** yet. APIs may change, and there might be bugs or incomplete features.
+>
+> **We're looking for contributors and maintainers!** If you're interested in helping shape this library, please check out our [Contributing Guide](CONTRIBUTING.md) or [open an issue](https://github.com/himanshu-lal4/react-native-tour-guide/issues) to get involved. Your contributions are highly valued! 🙏
+
+<br />
+
 ---
 
 <br />
