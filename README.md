@@ -15,11 +15,21 @@
     <a href="https://github.com/himanshu-lal4/react-native-tour-guide">
       <img src="https://img.shields.io/badge/platform-iOS%20%7C%20Android-lightgrey.svg?style=flat-square" alt="platforms" />
     </a>
+    <a href="https://expo.dev">
+      <img src="https://img.shields.io/badge/Expo-compatible-blue.svg?style=flat-square" alt="expo compatible" />
+    </a>
+    <a href="https://github.com/reactwg/react-native-new-architecture">
+      <img src="https://img.shields.io/badge/New%20Architecture-ready-green.svg?style=flat-square" alt="new architecture" />
+    </a>
   </p>
 
   <p>
     A powerful and customizable React Native library for creating beautiful app tours, walkthroughs, and coach marks. <br />
     Packed with advanced features like SVG masking, smooth animations, fully customizable tooltips, automatic scrolling, and a declarative API.
+  </p>
+
+  <p>
+    <strong>✅ Expo & React Native CLI</strong> • <strong>✅ New Architecture Ready</strong> • <strong>✅ Zero Native Dependencies</strong>
   </p>
 </div>
 
@@ -74,6 +84,8 @@
 | 🎯 **Setup Time**          | < 1 minute                   | 10-30 minutes         |
 | 🎨 **Customization**       | Fully customizable           | Limited options       |
 | 📱 **Platform Support**    | iOS & Android                | Platform specific     |
+| 🚀 **Expo & CLI Support**  | Both supported               | Limited               |
+| 🏗️ **New Architecture**    | Fully compatible             | Not supported         |
 | 🔌 **Native Dependencies** | Zero (optional enhancements) | Multiple required     |
 | 📦 **Bundle Size**         | Minimal (< 50KB)             | Heavy (> 200KB)       |
 | 🎭 **Custom Components**   | Full support                 | Limited/None          |
@@ -111,6 +123,7 @@
 - [🤝 Contributing](#-contributing)
 - [📄 License](#-license)
 - [🙏 Credits](#-credits)
+- [🔍 Keywords](#-keywords)
 - [📞 Support & Community](#-support--community)
 
 <br />
@@ -174,9 +187,27 @@
       <sub>Setup in less than 1 minute</sub>
     </td>
   </tr>
+  <tr>
+    <td>
+      📱 <strong>Expo Compatible</strong><br/>
+      <sub>Works with Expo & React Native CLI</sub>
+    </td>
+    <td>
+      🏗️ <strong>New Architecture</strong><br/>
+      <sub>Fully compatible with Fabric & TurboModules</sub>
+    </td>
+    <td>
+      🎯 <strong>Production Ready</strong><br/>
+      <sub>Battle-tested in real-world apps</sub>
+    </td>
+  </tr>
 </table>
 
 ## 📦 Installation
+
+> **🎯 Works with both Expo and React Native CLI!**
+>
+> **✅ New Architecture Compatible** - Fully supports React Native's new architecture (Fabric & TurboModules)
 
 <details open>
 <summary><strong>NPM</strong></summary>
@@ -202,6 +233,17 @@ yarn add @wrack/react-native-tour-guide react-native-svg
 ```bash
 pnpm add @wrack/react-native-tour-guide react-native-svg
 ```
+
+</details>
+
+<details>
+<summary><strong>Expo</strong></summary>
+
+```bash
+npx expo install @wrack/react-native-tour-guide react-native-svg
+```
+
+> Works seamlessly with Expo managed workflow. No additional configuration needed!
 
 </details>
 
@@ -707,6 +749,16 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 **Created with ❤️ by [Himanshu Lal](https://github.com/himanshu-lal4)**
 
 Inspired by various React Native tour guide implementations and modern app onboarding patterns.
+
+<br />
+
+## 🔍 Keywords
+
+<div align="center">
+
+`react-native` • `react-native-tour-guide` • `tour-guide` • `walkthrough` • `onboarding` • `coach-marks` • `coachmarks` • `copilot` • `app-tour` • `user-guide` • `tutorial` • `spotlight` • `highlight` • `tooltip` • `feature-discovery` • `feature-tour` • `interactive-tour` • `guided-tour` • `app-walkthrough` • `user-onboarding` • `mobile-tour` • `react-native-walkthrough` • `react-native-onboarding` • `react-native-copilot` • `react-native-spotlight` • `react-native-coach-marks` • `react-native-tutorial` • `expo` • `expo-compatible` • `typescript` • `ios` • `android` • `cross-platform` • `new-architecture` • `fabric` • `turbomodules` • `svg-masking` • `animated` • `customizable` • `declarative` • `intro` • `hints` • `tips` • `product-tour` • `feature-hints` • `interactive-guide` • `step-by-step` • `user-education` • `app-intro` • `first-time-user-experience` • `ftue`
+
+</div>
 
 <br />
 
