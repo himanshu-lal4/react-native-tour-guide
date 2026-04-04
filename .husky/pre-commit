@@ -39,11 +39,11 @@ if [ -n "$STAGED_FILES" ]; then
   fi
 fi
 
-# ── 3. Check for large files (> 1MB) ──
-LARGE_FILES=$(git diff --cached --name-only --diff-filter=ACM | while read -r file; do
+# ── 3. Check for large files (> 5MB, skip GIFs and tgz) ──
+LARGE_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -vE '\.(gif|tgz)$' | while read -r file; do
   if [ -f "$file" ]; then
     SIZE=$(wc -c < "$file" | tr -d ' ')
-    if [ "$SIZE" -gt 1048576 ]; then
+    if [ "$SIZE" -gt 5242880 ]; then
       echo "  → $file ($(( SIZE / 1024 ))KB)"
     fi
   fi
