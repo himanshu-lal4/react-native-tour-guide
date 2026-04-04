@@ -2,133 +2,171 @@
 
 Contributions are always welcome, no matter how large or small!
 
-We want this community to be friendly and respectful to each other. Please follow it in all your interactions with the project. Before contributing, please read the [code of conduct](./CODE_OF_CONDUCT.md).
+Please read the [Code of Conduct](./CODE_OF_CONDUCT.md) before contributing.
 
-## Development workflow
+## Getting Started
 
-This project is a monorepo managed using [Yarn workspaces](https://yarnpkg.com/features/workspaces). It contains the following packages:
+### Prerequisites
 
-- The library package in the root directory.
-- An example app in the `example/` directory.
+- Node.js (see `.nvmrc` for version)
+- Yarn 3.6+ (this project uses Yarn workspaces)
 
-To get started with the project, make sure you have the correct version of [Node.js](https://nodejs.org/) installed. See the [`.nvmrc`](./.nvmrc) file for the version used in this project.
-
-Run `yarn` in the root directory to install the required dependencies for each package:
+### Setup
 
 ```sh
+# Clone the repo
+git clone https://github.com/himanshu-lal4/react-native-tour-guide.git
+cd react-native-tour-guide
+
+# Install dependencies (this also sets up husky hooks)
 yarn
 ```
 
-> Since the project relies on Yarn workspaces, you cannot use [`npm`](https://github.com/npm/cli) for development without manually migrating.
+### Project Structure
 
-The [example app](/example/) demonstrates usage of the library. You need to run it to test any changes you make.
-
-It is configured to use the local version of the library, so any changes you make to the library's source code will be reflected in the example app. Changes to the library's JavaScript code will be reflected in the example app without a rebuild, but native code changes will require a rebuild of the example app.
-
-You can use various commands from the root directory to work with the project.
-
-To start the packager:
-
-```sh
-yarn example start
+```
+├── src/                  # Library source code
+│   ├── __tests__/        # Test files
+│   ├── types.ts          # TypeScript interfaces
+│   ├── TourGuideContext.tsx
+│   ├── TourGuideOverlay.tsx
+│   ├── SpotlightOverlay.tsx
+│   ├── Tooltip.tsx
+│   ├── accessibility.ts
+│   ├── useTourPersistence.ts
+│   ├── utils.ts
+│   └── index.tsx         # Public API exports
+├── example/              # Example app (Expo)
+├── lib/                  # Built output (don't edit)
+├── .husky/               # Git hooks
+└── .github/              # GitHub workflows & templates
 ```
 
-To run the example app on Android:
+## Development Workflow
+
+### Running the Example App
 
 ```sh
-yarn example android
+yarn example start        # Start Metro bundler
+yarn example ios          # Run on iOS
+yarn example android      # Run on Android
+yarn example web          # Run on Web
 ```
 
-To run the example app on iOS:
+The example app uses the local library source, so changes are reflected immediately (JS changes — native changes need a rebuild).
 
-```sh
-yarn example ios
+### Useful Commands
+
+| Command | Description |
+|---------|-------------|
+| `yarn lint` | Run ESLint |
+| `yarn lint:fix` | Run ESLint with auto-fix |
+| `yarn typecheck` | Run TypeScript type checking |
+| `yarn test` | Run Jest tests |
+| `yarn build` | Build the library |
+| `yarn format` | Format code with Prettier |
+| `yarn validate` | Run all checks (lint + typecheck + test + build) |
+
+## Git Hooks
+
+This project uses [Husky](https://typicode.github.io/husky/) for git hooks:
+
+### Pre-commit
+- Checks for merge conflict markers
+- Scans for accidental secrets/credentials
+- Blocks files larger than 1MB
+- Runs ESLint on staged files
+- Runs TypeScript type checking
+
+### Commit Message
+- Validates [Conventional Commits](https://www.conventionalcommits.org/) format
+- Shows helpful error with allowed types if validation fails
+
+### Pre-push
+- Validates branch naming convention (see below)
+
+## Branch Naming
+
+All branches must follow this naming convention:
+
+| Prefix | Use for | Example |
+|--------|---------|---------|
+| `feature/` | New feature | `feature/add-tooltip-animation` |
+| `fix/` | Bug fix | `fix/android-overlay-crash` |
+| `docs/` | Documentation | `docs/update-api-reference` |
+| `refactor/` | Code restructuring | `refactor/extract-scroll-hook` |
+| `chore/` | Tooling, CI, deps | `chore/upgrade-eslint` |
+| `perf/` | Performance | `perf/reduce-re-renders` |
+| `test/` | Tests | `test/add-tooltip-tests` |
+
+## Commit Message Convention
+
+We follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+<type>: <subject>
 ```
 
-To confirm that the app is running with the new architecture, you can check the Metro logs for a message like this:
+**Allowed types:**
 
-```sh
-Running "ReactNativeTourGuideExample" with {"fabric":true,"initialProps":{"concurrentRoot":true},"rootTag":1}
+| Type | Description |
+|------|-------------|
+| `feat` | New feature |
+| `fix` | Bug fix |
+| `docs` | Documentation changes |
+| `style` | Code style (formatting, no logic change) |
+| `refactor` | Code refactoring |
+| `perf` | Performance improvement |
+| `test` | Add or update tests |
+| `chore` | Build, CI, tooling changes |
+| `ci` | CI/CD changes |
+| `revert` | Revert a previous commit |
+
+**Examples:**
+```
+feat: add tour persistence hook
+fix: correct tooltip positioning on small screens
+docs: update API reference for v1.0
+chore: upgrade eslint to v9
+test: add accessibility announcement tests
 ```
 
-Note the `"fabric":true` and `"concurrentRoot":true` properties.
+## Sending a Pull Request
 
-To run the example app on Web:
+> **First time?** Check out [How to Contribute to an Open Source Project on GitHub](https://app.egghead.io/playlists/how-to-contribute-to-an-open-source-project-on-github).
 
-```sh
-yarn example web
-```
+1. Fork the repository
+2. Create a branch following the naming convention above
+3. Make your changes
+4. Run `yarn validate` to ensure everything passes
+5. Push and open a PR against `main`
+6. Fill out the PR template
 
-Make sure your code passes TypeScript and ESLint. Run the following to verify:
+### PR Guidelines
 
-```sh
-yarn typecheck
-yarn lint
-```
+- **Keep PRs focused** — one feature or fix per PR
+- **No breaking changes** without discussion — open an issue first
+- **Add tests** for new features
+- **Update docs** if you change the public API
+- **Don't commit build output** (`lib/` is gitignored)
 
-To fix formatting errors, run the following:
+## Publishing (Maintainers)
 
-```sh
-yarn lint --fix
-```
-
-Remember to add tests for your change if possible. Run the unit tests by:
-
-```sh
-yarn test
-```
-
-### Commit message convention
-
-We follow the [conventional commits specification](https://www.conventionalcommits.org/en) for our commit messages:
-
-- `fix`: bug fixes, e.g. fix crash due to deprecated method.
-- `feat`: new features, e.g. add new method to the module.
-- `refactor`: code refactor, e.g. migrate from class components to hooks.
-- `docs`: changes into documentation, e.g. add usage example for the module.
-- `test`: adding or updating tests, e.g. add integration tests using detox.
-- `chore`: tooling changes, e.g. change CI config.
-
-Our pre-commit hooks verify that your commit message matches this format when committing.
-
-### Linting and tests
-
-[ESLint](https://eslint.org/), [Prettier](https://prettier.io/), [TypeScript](https://www.typescriptlang.org/)
-
-We use [TypeScript](https://www.typescriptlang.org/) for type checking, [ESLint](https://eslint.org/) with [Prettier](https://prettier.io/) for linting and formatting the code, and [Jest](https://jestjs.io/) for testing.
-
-Our pre-commit hooks verify that the linter and tests pass when committing.
-
-### Publishing to npm
-
-We use [release-it](https://github.com/release-it/release-it) to make it easier to publish new versions. It handles common tasks like bumping version based on semver, creating tags and releases etc.
-
-To publish new versions, run the following:
+We use [release-it](https://github.com/release-it/release-it) for releases:
 
 ```sh
 yarn release
 ```
 
-### Scripts
+This will:
+1. Bump the version based on conventional commits
+2. Update CHANGELOG.md
+3. Create a git tag
+4. Push the tag (triggering the GitHub Release workflow)
+5. Publish to npm
 
-The `package.json` file contains various scripts for common tasks:
+## Questions?
 
-- `yarn`: setup project by installing dependencies.
-- `yarn typecheck`: type-check files with TypeScript.
-- `yarn lint`: lint files with ESLint.
-- `yarn test`: run unit tests with Jest.
-- `yarn example start`: start the Metro server for the example app.
-- `yarn example android`: run the example app on Android.
-- `yarn example ios`: run the example app on iOS.
-
-### Sending a pull request
-
-> **Working on your first pull request?** You can learn how from this _free_ series: [How to Contribute to an Open Source Project on GitHub](https://app.egghead.io/playlists/how-to-contribute-to-an-open-source-project-on-github).
-
-When you're sending a pull request:
-
-- Prefer small pull requests focused on one change.
-- Verify that linters and tests are passing.
-- Review the documentation to make sure it looks good.
-- Follow the pull request template when opening a pull request.
-- For pull requests that change the API or implementation, discuss with maintainers first by opening an issue.
+- Open a [Discussion](https://github.com/himanshu-lal4/react-native-tour-guide/discussions)
+- File a [Bug Report](https://github.com/himanshu-lal4/react-native-tour-guide/issues/new?template=bug_report.yml)
+- Request a [Feature](https://github.com/himanshu-lal4/react-native-tour-guide/issues/new?template=feature_request.yml)

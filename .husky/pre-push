@@ -1,0 +1,84 @@
+#!/bin/sh
+
+# ─────────────────────────────────────────────────────
+# PRE-PUSH HOOK
+# Validates branch naming before pushing.
+# ─────────────────────────────────────────────────────
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+# Skip validation for protected branches and bots
+if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "HEAD" ] || echo "$BRANCH" | grep -qE "^(bot-wrack|renovate|dependabot)/"; then
+  exit 0
+fi
+
+VALID=false
+MATCHED_PREFIX=""
+case "$BRANCH" in
+  feature/*)      VALID=true; MATCHED_PREFIX="feature" ;;
+  feat/*)         VALID=true; MATCHED_PREFIX="feat" ;;
+  fix/*)          VALID=true; MATCHED_PREFIX="fix" ;;
+  bugfix/*)       VALID=true; MATCHED_PREFIX="bugfix" ;;
+  hotfix/*)       VALID=true; MATCHED_PREFIX="hotfix" ;;
+  docs/*)         VALID=true; MATCHED_PREFIX="docs" ;;
+  refactor/*)     VALID=true; MATCHED_PREFIX="refactor" ;;
+  chore/*)        VALID=true; MATCHED_PREFIX="chore" ;;
+  perf/*)         VALID=true; MATCHED_PREFIX="perf" ;;
+  test/*)         VALID=true; MATCHED_PREFIX="test" ;;
+  release/*)      VALID=true; MATCHED_PREFIX="release" ;;
+esac
+
+if [ "$VALID" = false ]; then
+  echo ""
+  echo "+---------------------------------------------------------+"
+  echo "|        INVALID BRANCH NAME                              |"
+  echo "+---------------------------------------------------------+"
+  echo ""
+  echo "  Your branch:  $BRANCH"
+  echo ""
+
+  # Suggest what they might have meant
+  SUGGESTION=""
+  case "$BRANCH" in
+    features/*|feat-*)
+      SUGGESTION="feature/${BRANCH#*/}" ;;
+    bug/*|bugs/*|fixes/*)
+      SUGGESTION="fix/${BRANCH#*/}" ;;
+    hot/*|hotfixes/*|patch/*)
+      SUGGESTION="hotfix/${BRANCH#*/}" ;;
+    ref/*|cleanup/*)
+      SUGGESTION="refactor/${BRANCH#*/}" ;;
+    ci/*|deps/*|build/*)
+      SUGGESTION="chore/${BRANCH#*/}" ;;
+    tests/*|testing/*)
+      SUGGESTION="test/${BRANCH#*/}" ;;
+  esac
+
+  if [ -n "$SUGGESTION" ]; then
+    echo "  Did you mean:  $SUGGESTION"
+    echo "  Rename with:   git branch -m \"$BRANCH\" \"$SUGGESTION\""
+    echo ""
+  fi
+
+  echo "  Branch names must start with one of these prefixes:"
+  echo ""
+  echo "    feature/     New feature"
+  echo "    feat/        New feature (short form)"
+  echo "    fix/         Bug fix"
+  echo "    bugfix/      Bug fix"
+  echo "    hotfix/      Urgent fix"
+  echo "    docs/        Documentation"
+  echo "    refactor/    Code restructuring"
+  echo "    chore/       Tooling, CI, dependencies"
+  echo "    perf/        Performance improvement"
+  echo "    test/        Tests"
+  echo "    release/     Release preparation"
+  echo ""
+  echo "  How to fix:"
+  echo "    git branch -m \"$BRANCH\" \"feature/your-description\""
+  echo "    git push -u origin feature/your-description"
+  echo ""
+  exit 1
+fi
+
+echo "  [info] $BRANCH -> create PR to: main"
