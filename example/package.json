@@ -13,9 +13,9 @@
     "@wrack/react-native-tour-guide": "../wrack-react-native-tour-guide-0.1.0.tgz",
     "expo": "~54.0.18",
     "expo-status-bar": "~3.0.8",
-    "react": "^19.2.0",
+    "react": "19.1.0",
     "react-dom": "19.1.0",
-    "react-native": "^0.81.5",
+    "react-native": "0.81.5",
     "react-native-svg": "^15.8.0",
     "react-native-web": "~0.21.0"
   },

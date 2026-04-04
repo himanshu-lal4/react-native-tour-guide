@@ -1,0 +1,31 @@
+title: "[Q&A] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ask your question below. Please include:
+        - What you're trying to do
+        - What you've already tried
+        - Relevant code snippets
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: Describe what you need help with.
+    validations:
+      required: true
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Code
+      description: Share relevant code (optional).
+      render: tsx
+
+  - type: input
+    id: version
+    attributes:
+      label: Library Version
+      placeholder: "1.0.0"

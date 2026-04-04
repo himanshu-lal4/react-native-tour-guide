@@ -1,12 +1,55 @@
-import React, { useEffect } from 'react';
-import { Dimensions, Modal, Platform, StatusBar } from 'react-native';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { Dimensions, Modal, Platform, StatusBar, findNodeHandle } from 'react-native';
 
 import { useTourGuide } from './TourGuideContext';
 import SpotlightOverlay from './SpotlightOverlay';
 import Tooltip from './Tooltip';
+import { validateRef, computeTooltipPosition, extractBorderRadius } from './utils';
+import { announceStep } from './accessibility';
+import type { BackdropBehavior } from './types';
 
-const WINDOW_HEIGHT = Dimensions.get('window').height;
-const SAFE_ZONE_OFFSET = 120; // Offset for navigation bars
+const isWeb = Platform.OS === 'web';
+
+const MAX_MEASURE_RETRIES = 3;
+const MEASURE_RETRY_DELAY = 100;
+
+/**
+ * Cross-platform measurement helper.
+ * Uses getBoundingClientRect on web, measureInWindow on native.
+ */
+const measureElement = (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ref: { current: any },
+  callback: (x: number, y: number, width: number, height: number) => void
+) => {
+  if (isWeb) {
+    try {
+      // react-native-web: findNodeHandle returns the DOM node directly
+      const node = findNodeHandle(ref.current);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const domNode = (node ?? ref.current) as any;
+      if (domNode && typeof domNode.getBoundingClientRect === 'function') {
+        const rect = domNode.getBoundingClientRect();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const win = globalThis as any;
+        callback(
+          rect.left + (win.scrollX ?? 0),
+          rect.top + (win.scrollY ?? 0),
+          rect.width,
+          rect.height
+        );
+        return;
+      }
+    } catch {
+      // Fall through to measureInWindow if available
+    }
+  }
+
+  // Native path
+  if (typeof ref.current.measureInWindow === 'function') {
+    ref.current.measureInWindow(callback);
+  }
+};
 
 /**
  * Main overlay component that displays the tour guide.
@@ -29,8 +72,9 @@ const SAFE_ZONE_OFFSET = 120; // Offset for navigation bars
 const TourGuideOverlay: React.FC = () => {
   const {
     isActive,
+    isPaused,
     currentStep,
-    steps,
+    activeSteps,
     config,
     targetLayout,
     setTargetLayout,
@@ -39,134 +83,379 @@ const TourGuideOverlay: React.FC = () => {
     skipTour,
   } = useTourGuide();
 
-  const currentStepData = steps[currentStep];
-
-  useEffect(() => {
-    // When step changes, measure the target element
-    if (isActive && currentStepData?.targetRef?.current) {
-      const measureTarget = () => {
-        currentStepData.targetRef?.current?.measureInWindow(
-          (x: number, y: number, width: number, height: number) => {
-            if (width > 0 && height > 0) {
-              // On Android with statusBarTranslucent, add the status bar height
-              const statusBarHeight =
-                Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0;
-              const adjustedY = y + statusBarHeight;
-
-              setTargetLayout({ x, y: adjustedY, width, height });
-            }
-          }
-        );
-      };
-
-      // Check if we need to scroll to the target first
-      if (currentStepData.scrollToTarget?.scrollRef?.current) {
-        const {
-          scrollRef,
-          offset = 0,
-          animated = true,
-          absolute = false,
-        } = currentStepData.scrollToTarget;
-
-        if (absolute) {
-          // Absolute positioning - scroll to the specified Y position directly
-          scrollRef.current?.scrollTo({
-            y: Math.max(0, offset),
-            animated,
-          });
-
-          // Wait for scroll animation to complete, then measure
-          setTimeout(
-            () => {
-              measureTarget();
-            },
-            animated ? 400 : 100
-          );
-
-          return undefined;
-        } else {
-          // Relative positioning - measure target first, then scroll relative to it
-          currentStepData.targetRef?.current?.measureInWindow(
-            (_x: number, y: number, width: number, height: number) => {
-              if (width > 0 && height > 0) {
-                const statusBarHeight =
-                  Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0;
-                const adjustedY = y + statusBarHeight;
-
-                // Get current scroll offset (defaults to 0 if not provided)
-                const currentScrollOffset =
-                  currentStepData.scrollToTarget?.getCurrentScrollOffset?.() ||
-                  0;
-
-                // Define safe zones (accounting for navigation bars)
-                const safeZoneTop = SAFE_ZONE_OFFSET;
-                const safeZoneBottom = WINDOW_HEIGHT - SAFE_ZONE_OFFSET;
-
-                // Check if target is already visible within safe zones
-                const targetTop = adjustedY;
-                const targetBottom = adjustedY + height;
-
-                const isTargetVisibleInSafeZone =
-                  targetTop >= safeZoneTop && targetBottom <= safeZoneBottom;
-
-                if (isTargetVisibleInSafeZone) {
-                  // Target is already visible, no need to scroll
-                  measureTarget();
-                } else {
-                  // Target is not visible, calculate scroll position
-                  // Target position in scroll content = window position + current scroll offset
-                  let scrollToY = currentScrollOffset;
-
-                  if (targetTop < safeZoneTop) {
-                    // Target is above safe zone, scroll up to bring it into view at the top
-                    // New scroll position = current - (safeZoneTop - targetTop) + offset
-                    scrollToY =
-                      currentScrollOffset - (safeZoneTop - targetTop) + offset;
-                  } else if (targetBottom > safeZoneBottom) {
-                    // Target is below safe zone, scroll down to bring it into view at the bottom
-                    // New scroll position = current + (targetBottom - safeZoneBottom) + offset
-                    scrollToY =
-                      currentScrollOffset +
-                      (targetBottom - safeZoneBottom) +
-                      offset;
-                  }
-
-                  // Scroll to the calculated position
-                  scrollRef.current?.scrollTo({
-                    y: Math.max(0, scrollToY),
-                    animated,
-                  });
-
-                  // Wait for scroll animation to complete, then measure again
-                  setTimeout(
-                    () => {
-                      measureTarget();
-                    },
-                    animated ? 400 : 100
-                  );
-                }
-              }
-            }
-          );
-
-          return undefined;
-        }
-      } else {
-        // No scrolling needed, measure immediately with a small delay
-        const timer = setTimeout(measureTarget, 100);
-        return () => clearTimeout(timer);
-      }
-    } else {
-      // No active tour or no target, no cleanup needed
-      return undefined;
+  // Track screen dimensions for orientation changes
+  const [screenDimensions, setScreenDimensions] = useState<{ width: number; height: number }>(
+    () => {
+      const { width, height } = Dimensions.get('window');
+      return { width, height };
     }
-  }, [isActive, currentStep, currentStepData, setTargetLayout]);
+  );
+  const currentStepData = activeSteps[currentStep];
 
-  if (!isActive || !currentStepData) {
-    return null;
-  }
+  // Refs for cleanup
+  const delayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const measureRetryCount = useRef(0);
 
-  // Use custom tooltip renderer if provided
+  // --- Orientation change handling ---
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener(
+      'change',
+      ({ window: win }: { window: { width: number; height: number } }) => {
+        setScreenDimensions(win);
+        // Re-measure current target after orientation change
+        if (isActive && currentStepData?.targetRef?.current) {
+          setTargetLayout(null);
+        }
+      }
+    );
+
+    return () => subscription.remove();
+  }, [isActive, currentStepData, setTargetLayout]);
+
+  // Estimated tooltip height for scroll calculations (title + description + buttons + padding)
+  const ESTIMATED_TOOLTIP_HEIGHT = 200;
+
+  // --- Resolve the effective scroll ref (per-step overrides global config) ---
+  const getScrollRef = useCallback(() => {
+    return currentStepData?.scrollToTarget?.scrollRef ?? config?.scrollRef ?? null;
+  }, [currentStepData, config]);
+
+  const getScrollOffset = useCallback(() => {
+    return (
+      currentStepData?.scrollToTarget?.getCurrentScrollOffset?.() ??
+      config?.getCurrentScrollOffset?.() ??
+      0
+    );
+  }, [currentStepData, config]);
+
+  // --- Measure target with retry logic ---
+  const measureTarget = useCallback(
+    (retryCount = 0) => {
+      if (!currentStepData?.targetRef?.current) {
+        // No target ref — show tooltip without spotlight
+        setTargetLayout(null);
+        return;
+      }
+
+      measureElement(
+        currentStepData.targetRef as { current: Record<string, unknown> },
+        (x: number, y: number, width: number, height: number) => {
+          if (width > 0 && height > 0) {
+            const statusBarHeight =
+              !isWeb && Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0;
+            const adjustedY = y + statusBarHeight;
+            setTargetLayout({ x, y: adjustedY, width, height });
+            measureRetryCount.current = 0;
+          } else if (retryCount < MAX_MEASURE_RETRIES) {
+            // Element not laid out yet — retry
+            setTimeout(() => measureTarget(retryCount + 1), MEASURE_RETRY_DELAY);
+          } else {
+            console.warn(
+              `react-native-tour-guide: Step "${currentStepData.id}" target measured as 0x0 after ${MAX_MEASURE_RETRIES} retries.`
+            );
+            measureRetryCount.current = 0;
+          }
+        }
+      );
+    },
+    [currentStepData, setTargetLayout]
+  );
+
+  // --- Scroll to target logic ---
+  // Ensures both the target AND tooltip are fully visible in the viewport.
+  // If they don't fit, auto-scrolls the parent ScrollView.
+  const scrollAndMeasure = useCallback(() => {
+    const scrollRef = getScrollRef();
+    const stepScrollConfig = currentStepData?.scrollToTarget;
+
+    // Handle absolute scroll positioning
+    if (stepScrollConfig?.absolute && scrollRef?.current) {
+      const offset = stepScrollConfig.offset ?? 0;
+      const animated = stepScrollConfig.animated ?? true;
+      scrollRef.current.scrollTo({ y: Math.max(0, offset), animated });
+      setTimeout(() => measureTarget(), animated ? 400 : 100);
+      return;
+    }
+
+    // No target to measure
+    if (!currentStepData?.targetRef?.current) {
+      measureTarget();
+      return;
+    }
+
+    // Measure the target, then decide if scrolling is needed
+    measureElement(
+      currentStepData.targetRef as { current: Record<string, unknown> },
+      (_: number, y: number, width: number, height: number) => {
+        if (width <= 0 || height <= 0) {
+          measureTarget();
+          return;
+        }
+
+        // If no scroll ref available, just measure and render
+        if (!scrollRef?.current) {
+          measureTarget();
+          return;
+        }
+
+        const statusBarHeight =
+          !isWeb && Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0;
+        const adjustedY = y + statusBarHeight;
+        const animated = stepScrollConfig?.animated ?? true;
+        const extraOffset = stepScrollConfig?.offset ?? 0;
+        const currentScrollOffset = getScrollOffset();
+
+        // How much space tooltip + arrow + gap needs
+        const tooltipSpace =
+          ESTIMATED_TOOLTIP_HEIGHT +
+          (config?.tooltipOffset ?? 8) +
+          (config?.triangleSize ?? 12);
+
+        const targetTop = adjustedY;
+        const targetBottom = adjustedY + height;
+        const sh = screenDimensions.height;
+
+        // Margins: top needs room for status bar, bottom needs generous room
+        const topMargin = 80;
+        const bottomMargin = 40;
+
+        // Space available above and below the target for the tooltip
+        const spaceAbove = targetTop - topMargin;
+        const spaceBelow = sh - targetBottom - bottomMargin;
+
+        // Is the full target visible with comfortable margins?
+        const targetFullyVisible =
+          targetTop >= topMargin && targetBottom <= sh - bottomMargin;
+        // Does the tooltip fit on at least one side?
+        const tooltipFits = spaceBelow >= tooltipSpace || spaceAbove >= tooltipSpace;
+
+        if (targetFullyVisible && tooltipFits) {
+          // Everything fits — no scroll needed
+          measureTarget();
+          return;
+        }
+
+        // Need to scroll. Calculate where the target should be on screen.
+        // Strategy: place target so the LARGER space (above or below) gets the tooltip.
+        let idealTargetScreenY: number;
+
+        // Prefer tooltip above: scroll target toward the bottom half
+        // This way user sees the target clearly and tooltip appears above
+        const targetWithTooltipAbove = tooltipSpace + topMargin;
+        const targetWithTooltipBelow = topMargin;
+
+        if (targetWithTooltipAbove + height + bottomMargin <= sh) {
+          // Tooltip above fits — place target below the tooltip space
+          idealTargetScreenY = targetWithTooltipAbove;
+        } else if (targetWithTooltipBelow + height + tooltipSpace + bottomMargin <= sh) {
+          // Tooltip below fits — place target near top
+          idealTargetScreenY = targetWithTooltipBelow;
+        } else {
+          // Tight space — center the target, tooltip will auto-position
+          idealTargetScreenY = (sh - height) / 2;
+        }
+
+        // Ensure the target bottom is fully visible on screen
+        const maxTargetY = sh - height - bottomMargin;
+        idealTargetScreenY = Math.min(idealTargetScreenY, maxTargetY);
+
+        const scrollDelta = targetTop - idealTargetScreenY;
+        const scrollToY = currentScrollOffset + scrollDelta + extraOffset;
+
+        scrollRef.current.scrollTo({ y: Math.max(0, scrollToY), animated });
+        setTimeout(() => measureTarget(), animated ? 400 : 100);
+      }
+    );
+  }, [
+    currentStepData,
+    measureTarget,
+    getScrollRef,
+    getScrollOffset,
+    screenDimensions.height,
+    config,
+  ]);
+
+  // --- Main effect: step changes ---
+  useEffect(() => {
+    // Cleanup previous timers
+    if (delayTimer.current) {
+      clearTimeout(delayTimer.current);
+      delayTimer.current = null;
+    }
+    if (autoAdvanceTimer.current) {
+      clearTimeout(autoAdvanceTimer.current);
+      autoAdvanceTimer.current = null;
+    }
+
+    if (!isActive || isPaused || !currentStepData) return undefined;
+
+    // Validate ref
+    const hasValidRef = validateRef(currentStepData.targetRef, currentStepData.id);
+
+    const startMeasurement = () => {
+      if (hasValidRef) {
+        scrollAndMeasure();
+      } else {
+        // No valid ref — show tooltip without spotlight (centered)
+        setTargetLayout(null);
+      }
+    };
+
+    // Apply delay if configured
+    const delay = currentStepData.delayBefore ?? 0;
+    if (delay > 0) {
+      delayTimer.current = setTimeout(startMeasurement, delay);
+    } else {
+      // Small delay to ensure layout is ready
+      delayTimer.current = setTimeout(startMeasurement, 100);
+    }
+
+    return () => {
+      if (delayTimer.current) {
+        clearTimeout(delayTimer.current);
+        delayTimer.current = null;
+      }
+      if (autoAdvanceTimer.current) {
+        clearTimeout(autoAdvanceTimer.current);
+        autoAdvanceTimer.current = null;
+      }
+    };
+  }, [isActive, isPaused, currentStep, currentStepData, scrollAndMeasure, setTargetLayout]);
+
+  // --- Accessibility announcement ---
+  useEffect(() => {
+    if (isActive && currentStepData && targetLayout) {
+      announceStep(currentStepData, currentStep, activeSteps.length, config);
+    }
+  }, [isActive, currentStepData, targetLayout, currentStep, activeSteps.length, config]);
+
+  // --- Auto-advance timer ---
+  useEffect(() => {
+    if (!isActive || !currentStepData || !targetLayout) return undefined;
+
+    const { autoAdvance } = currentStepData;
+    if (autoAdvance && autoAdvance > 0) {
+      autoAdvanceTimer.current = setTimeout(() => {
+        nextStep();
+      }, autoAdvance);
+
+      return () => {
+        if (autoAdvanceTimer.current) {
+          clearTimeout(autoAdvanceTimer.current);
+          autoAdvanceTimer.current = null;
+        }
+      };
+    }
+
+    return undefined;
+  }, [isActive, currentStepData, targetLayout, nextStep]);
+
+  if (!isActive || isPaused || !currentStepData) return null;
+
+  // --- Backdrop behavior ---
+  const resolveBackdropBehavior = (behavior: BackdropBehavior | undefined) => {
+    const effective = behavior ?? config?.defaultBackdropBehavior ?? 'none';
+    if (effective === 'dismiss') return skipTour;
+    if (effective === 'next') return nextStep;
+    if (typeof effective === 'function') return effective;
+    return undefined; // 'none'
+  };
+
+  const onBackdropPress = resolveBackdropBehavior(currentStepData.backdropBehavior);
+
+  // --- Tooltip position resolution ---
+  const resolvedTooltipPosition = (() => {
+    const preferred = currentStepData.tooltipPosition ?? 'auto';
+
+    // Always auto-position to avoid off-screen tooltips, unless explicitly overridden
+    if (preferred === 'auto' || config?.autoPositionTooltip !== false) {
+      if (targetLayout) {
+        // If user set explicit position (not 'auto'), use it as a hint but validate
+        const autoResult = computeTooltipPosition({
+          target: targetLayout,
+          screenWidth: screenDimensions.width,
+          screenHeight: screenDimensions.height,
+          tooltipWidth: config?.tooltipWidth ?? 320,
+          tooltipHeight: 150,
+          offset: (config?.tooltipOffset ?? 8) + (config?.triangleSize ?? 12),
+        });
+
+        // If user explicitly chose a position (not 'auto'), prefer it if it fits
+        if (preferred !== 'auto') {
+          const offset = (config?.tooltipOffset ?? 8) + (config?.triangleSize ?? 12);
+          const tooltipHeight = 150;
+          const fits = (() => {
+            switch (preferred) {
+              case 'bottom':
+                return (
+                  screenDimensions.height - (targetLayout.y + targetLayout.height + offset) >=
+                  tooltipHeight
+                );
+              case 'top':
+                return targetLayout.y - offset >= tooltipHeight;
+              case 'left':
+                return targetLayout.x - offset >= (config?.tooltipWidth ?? 320) * 0.6;
+              case 'right':
+                return (
+                  screenDimensions.width - (targetLayout.x + targetLayout.width + offset) >=
+                  (config?.tooltipWidth ?? 320) * 0.6
+                );
+              default:
+                return false;
+            }
+          })();
+          if (fits) return preferred;
+        }
+
+        return autoResult;
+      }
+    }
+
+    return preferred === 'auto' ? 'bottom' : preferred;
+  })();
+
+  // --- Shared tooltip props ---
+  const tooltipProps = {
+    title: currentStepData.title,
+    description: currentStepData.description,
+    position: targetLayout
+      ? { x: targetLayout.x, y: targetLayout.y }
+      : { x: screenDimensions.width / 2, y: screenDimensions.height / 2 },
+    tooltipPosition: resolvedTooltipPosition,
+    currentStep,
+    totalSteps: activeSteps.length,
+    targetHeight: targetLayout?.height ?? 0,
+    targetWidth: targetLayout?.width ?? 0,
+    onNext: nextStep,
+    onPrev: currentStep > 0 ? prevStep : undefined,
+    onSkip: skipTour,
+    config,
+    hideNextButton: currentStepData.hideNextButton,
+    hidePrevButton: currentStepData.hidePrevButton,
+    hideSkipButton: currentStepData.hideSkipButton,
+    screenWidth: screenDimensions.width,
+    screenHeight: screenDimensions.height,
+  };
+
+  // --- Resolve border radius: explicit > extracted from targetStyle > default ---
+  const effectiveBorderRadius =
+    currentStepData.spotlightBorderRadius ?? extractBorderRadius(currentStepData.targetStyle);
+
+  // --- Shared spotlight props ---
+  const spotlightProps = {
+    target: targetLayout,
+    padding: currentStepData.spotlightPadding,
+    borderRadius: effectiveBorderRadius,
+    styles: config?.spotlightStyles,
+    screenWidth: screenDimensions.width,
+    screenHeight: screenDimensions.height,
+    animationDuration: config?.animationDuration,
+    onBackdropPress,
+    onSpotlightPress: currentStepData.onSpotlightPress,
+  };
+
+  // Custom tooltip renderer
   if (config?.renderTooltip && targetLayout) {
     return (
       <Modal
@@ -176,27 +465,8 @@ const TourGuideOverlay: React.FC = () => {
         statusBarTranslucent
         onRequestClose={skipTour}
       >
-        <SpotlightOverlay
-          target={targetLayout}
-          shape={currentStepData.spotlightShape}
-          padding={currentStepData.spotlightPadding}
-          borderRadius={currentStepData.spotlightBorderRadius}
-          styles={config.spotlightStyles}
-        />
-        {config.renderTooltip({
-          title: currentStepData.title,
-          description: currentStepData.description,
-          position: { x: targetLayout.x, y: targetLayout.y },
-          tooltipPosition: currentStepData.tooltipPosition,
-          currentStep,
-          totalSteps: steps.length,
-          targetHeight: targetLayout.height,
-          targetWidth: targetLayout.width,
-          onNext: nextStep,
-          onPrev: currentStep > 0 ? prevStep : undefined,
-          onSkip: skipTour,
-          config,
-        })}
+        <SpotlightOverlay {...spotlightProps} />
+        {config.renderTooltip(tooltipProps)}
       </Modal>
     );
   }
@@ -209,32 +479,8 @@ const TourGuideOverlay: React.FC = () => {
       statusBarTranslucent
       onRequestClose={skipTour}
     >
-      {/* Spotlight Overlay */}
-      <SpotlightOverlay
-        target={targetLayout}
-        shape={currentStepData.spotlightShape}
-        padding={currentStepData.spotlightPadding}
-        borderRadius={currentStepData.spotlightBorderRadius}
-        styles={config?.spotlightStyles}
-      />
-
-      {/* Tooltip */}
-      {targetLayout && (
-        <Tooltip
-          title={currentStepData.title}
-          description={currentStepData.description}
-          position={{ x: targetLayout.x, y: targetLayout.y }}
-          tooltipPosition={currentStepData.tooltipPosition}
-          currentStep={currentStep}
-          totalSteps={steps.length}
-          targetHeight={targetLayout.height}
-          targetWidth={targetLayout.width}
-          onNext={nextStep}
-          onPrev={currentStep > 0 ? prevStep : undefined}
-          onSkip={skipTour}
-          config={config}
-        />
-      )}
+      <SpotlightOverlay {...spotlightProps} />
+      {targetLayout ? <Tooltip {...tooltipProps} /> : null}
     </Modal>
   );
 };

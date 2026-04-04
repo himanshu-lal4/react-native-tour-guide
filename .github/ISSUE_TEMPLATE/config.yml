@@ -1,8 +1,11 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Feature Request 💡
-    url: https://github.com/himanshu-lal4/react-native-tour-guide/discussions/new?category=ideas
-    about: If you have a feature request, please create a new discussion on GitHub.
-  - name: Discussions on GitHub 💬
-    url: https://github.com/himanshu-lal4/react-native-tour-guide/discussions
-    about: If this library works as promised but you need help, please ask questions there.
+  - name: Questions & Help
+    url: https://github.com/himanshu-lal4/react-native-tour-guide/discussions/categories/q-a
+    about: Ask questions and get help from the community
+  - name: Ideas & Suggestions
+    url: https://github.com/himanshu-lal4/react-native-tour-guide/discussions/categories/ideas
+    about: Share ideas that aren't quite feature requests yet
+  - name: Show & Tell
+    url: https://github.com/himanshu-lal4/react-native-tour-guide/discussions/categories/show-and-tell
+    about: Show off what you've built with react-native-tour-guide

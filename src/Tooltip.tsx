@@ -1,31 +1,25 @@
-import React from 'react';
-import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-  Dimensions,
-  Platform,
-} from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 
-import type { TooltipProps } from './types';
+import type { TourGuideConfig, TooltipProps } from './types';
+import { computeTooltipPosition } from './utils';
+import { getTooltipAccessibilityProps } from './accessibility';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const TOOLTIP_WIDTH = 320;
-const TRIANGLE_SIZE = 12;
-const OFFSET = 8; // Distance from target to triangle
+const DEFAULT_CONFIG: TourGuideConfig = {};
+
+const DEFAULT_TOOLTIP_WIDTH = 320;
+const DEFAULT_TRIANGLE_SIZE = 12;
+const DEFAULT_OFFSET = 8;
 
 /**
  * Tooltip component that displays tour information.
  * Supports automatic positioning and customizable styling.
- *
- * @param props - Tooltip properties including title, description, and callbacks
  */
 const Tooltip: React.FC<TooltipProps> = ({
   title,
   description,
   position,
-  tooltipPosition = 'bottom',
+  tooltipPosition: tooltipPositionProp = 'bottom',
   currentStep,
   totalSteps,
   onNext,
@@ -33,10 +27,15 @@ const Tooltip: React.FC<TooltipProps> = ({
   onSkip,
   targetHeight = 0,
   targetWidth = 0,
-  config = {},
+  config = DEFAULT_CONFIG,
+  hideNextButton = false,
+  hidePrevButton = false,
+  hideSkipButton = false,
+  screenWidth = 0,
+  screenHeight = 0,
 }) => {
   const {
-    tooltipStyles = {},
+    tooltipStyles: tooltipStylesConfig,
     showProgressDots = false,
     showStepCounter = true,
     enableBackButton = true,
@@ -44,7 +43,14 @@ const Tooltip: React.FC<TooltipProps> = ({
     prevButtonText = 'Back',
     skipButtonText = 'Skip',
     doneButtonText = 'Done',
+    tooltipWidth: configTooltipWidth,
+    triangleSize: configTriangleSize,
+    tooltipOffset: configTooltipOffset,
   } = config;
+
+  const TOOLTIP_WIDTH = configTooltipWidth ?? DEFAULT_TOOLTIP_WIDTH;
+  const TRIANGLE_SIZE = configTriangleSize ?? DEFAULT_TRIANGLE_SIZE;
+  const OFFSET = configTooltipOffset ?? DEFAULT_OFFSET;
 
   const {
     backgroundColor = '#2C2C2E',
@@ -55,39 +61,91 @@ const Tooltip: React.FC<TooltipProps> = ({
     primaryButtonColor = '#007AFF',
     secondaryButtonColor = '#3A3A3C',
     skipButtonColor = '#FFFFFF',
-    titleStyle = {},
-    descriptionStyle = {},
-    containerStyle = {},
-  } = tooltipStyles;
+    titleStyle: customTitleStyle,
+    descriptionStyle: customDescriptionStyle,
+    containerStyle: customContainerStyle,
+  } = tooltipStylesConfig ?? {};
 
-  // Calculate target center
   const targetCenterX = position.x + targetWidth / 2;
-  const targetCenterY = position.y + targetHeight / 2;
+
+  // Smart auto-positioning
+  const tooltipPosition = useMemo(() => {
+    if (tooltipPositionProp === 'auto' && screenWidth > 0 && screenHeight > 0) {
+      return computeTooltipPosition({
+        target: { x: position.x, y: position.y, width: targetWidth, height: targetHeight },
+        screenWidth,
+        screenHeight,
+        tooltipWidth: TOOLTIP_WIDTH,
+        tooltipHeight: 150,
+        offset: OFFSET + TRIANGLE_SIZE,
+      });
+    }
+
+    if (tooltipPositionProp === 'auto') return 'bottom';
+    return tooltipPositionProp;
+  }, [
+    tooltipPositionProp,
+    position.x,
+    position.y,
+    targetWidth,
+    targetHeight,
+    screenWidth,
+    screenHeight,
+    TOOLTIP_WIDTH,
+    OFFSET,
+    TRIANGLE_SIZE,
+  ]);
+
+  // Compute tooltip body position and style
+  const tooltipBodyStyle = useMemo(() => {
+    if (tooltipPosition === 'top' || tooltipPosition === 'bottom') {
+      const pad = 16;
+      const idealLeft = targetCenterX - TOOLTIP_WIDTH / 2;
+      const minLeft = pad;
+      const maxLeft = screenWidth - TOOLTIP_WIDTH - pad;
+      const clampedLeft = Math.max(minLeft, Math.min(idealLeft, maxLeft));
+
+      return { left: clampedLeft, maxWidth: TOOLTIP_WIDTH, minWidth: 100 };
+    }
+    return { left: undefined as number | undefined, maxWidth: TOOLTIP_WIDTH, minWidth: 100 };
+  }, [tooltipPosition, targetCenterX, TOOLTIP_WIDTH, screenWidth]);
 
   const getTooltipPosition = () => {
+    const SAFE_MARGIN = 8;
+
     switch (tooltipPosition) {
-      case 'top':
+      case 'top': {
+        const bottomVal = screenHeight - position.y + OFFSET + TRIANGLE_SIZE;
+        // Clamp so tooltip doesn't go above the screen
+        return { bottom: Math.min(bottomVal, screenHeight - SAFE_MARGIN) };
+      }
+      case 'bottom': {
+        const topVal = position.y + targetHeight + OFFSET + TRIANGLE_SIZE;
+        // Clamp so tooltip doesn't go below the screen
+        return { top: Math.min(topVal, screenHeight - SAFE_MARGIN) };
+      }
+      case 'left': {
+        const topVal = Math.max(
+          SAFE_MARGIN,
+          Math.min(position.y + targetHeight / 2 - 40, screenHeight - SAFE_MARGIN)
+        );
         return {
-          bottom: SCREEN_HEIGHT - position.y + OFFSET + TRIANGLE_SIZE,
+          right: screenWidth - position.x + OFFSET + TRIANGLE_SIZE,
+          top: topVal,
         };
-      case 'bottom':
-        return {
-          top: position.y + targetHeight + OFFSET + TRIANGLE_SIZE,
-        };
-      case 'left':
-        return {
-          right: SCREEN_WIDTH - position.x + OFFSET + TRIANGLE_SIZE,
-          top: targetCenterY - 40,
-        };
-      case 'right':
+      }
+      case 'right': {
+        const topVal = Math.max(
+          SAFE_MARGIN,
+          Math.min(position.y + targetHeight / 2 - 40, screenHeight - SAFE_MARGIN)
+        );
         return {
           left: position.x + targetWidth + OFFSET + TRIANGLE_SIZE,
-          top: targetCenterY - 40,
+          top: topVal,
         };
+      }
       default:
-        return {
-          top: position.y + targetHeight + OFFSET + TRIANGLE_SIZE,
-        };
+        return { top: position.y + targetHeight + OFFSET + TRIANGLE_SIZE };
     }
   };
 
@@ -99,6 +157,19 @@ const Tooltip: React.FC<TooltipProps> = ({
       position: 'absolute' as const,
     };
 
+    // Arrow tip should point at targetCenterX (screen coordinate).
+    // The triangle is inside tooltipWrapper which starts at screen x=0,
+    // so its `left` is in screen coordinates.
+    // Clamp so arrow stays visually within the tooltip body.
+    const tooltipLeft = tooltipBodyStyle.left ?? 0;
+    const rawTriangleLeft = targetCenterX - TRIANGLE_SIZE;
+    const minTriangle = tooltipLeft + borderRadius;
+    const maxTriangle = tooltipLeft + TOOLTIP_WIDTH - borderRadius - TRIANGLE_SIZE * 2;
+    const relativeTriangleLeft = Math.max(minTriangle, Math.min(rawTriangleLeft, maxTriangle));
+
+    // Overlap arrow by 1px to eliminate subpixel gap
+    const OVERLAP = 1;
+
     switch (tooltipPosition) {
       case 'top':
         return {
@@ -109,8 +180,8 @@ const Tooltip: React.FC<TooltipProps> = ({
           borderRightColor: 'transparent',
           borderTopColor: backgroundColor,
           borderTopWidth: TRIANGLE_SIZE,
-          bottom: -TRIANGLE_SIZE,
-          left: targetCenterX - TRIANGLE_SIZE,
+          bottom: -TRIANGLE_SIZE + OVERLAP,
+          left: relativeTriangleLeft,
         };
       case 'bottom':
         return {
@@ -121,8 +192,8 @@ const Tooltip: React.FC<TooltipProps> = ({
           borderRightColor: 'transparent',
           borderBottomColor: backgroundColor,
           borderBottomWidth: TRIANGLE_SIZE,
-          top: -TRIANGLE_SIZE,
-          left: targetCenterX - TRIANGLE_SIZE,
+          top: -TRIANGLE_SIZE + OVERLAP,
+          left: relativeTriangleLeft,
         };
       case 'left':
         return {
@@ -133,7 +204,7 @@ const Tooltip: React.FC<TooltipProps> = ({
           borderBottomColor: 'transparent',
           borderLeftColor: backgroundColor,
           borderLeftWidth: TRIANGLE_SIZE,
-          right: -TRIANGLE_SIZE,
+          right: -TRIANGLE_SIZE + OVERLAP,
           top: 20,
         };
       case 'right':
@@ -145,7 +216,7 @@ const Tooltip: React.FC<TooltipProps> = ({
           borderBottomColor: 'transparent',
           borderRightColor: backgroundColor,
           borderRightWidth: TRIANGLE_SIZE,
-          left: -TRIANGLE_SIZE,
+          left: -TRIANGLE_SIZE + OVERLAP,
           top: 20,
         };
       default:
@@ -157,154 +228,136 @@ const Tooltip: React.FC<TooltipProps> = ({
           borderRightColor: 'transparent',
           borderBottomColor: backgroundColor,
           borderBottomWidth: TRIANGLE_SIZE,
-          top: -TRIANGLE_SIZE,
-          left: targetCenterX - TRIANGLE_SIZE,
+          top: -TRIANGLE_SIZE + OVERLAP,
+          left: relativeTriangleLeft,
         };
     }
   };
 
-  const getTooltipBodyStyle = () => {
-    if (tooltipPosition === 'top' || tooltipPosition === 'bottom') {
-      const padding = 16;
-      const idealLeft = targetCenterX - TOOLTIP_WIDTH / 2;
-      const minLeft = padding;
-      const maxLeft = SCREEN_WIDTH - TOOLTIP_WIDTH - padding;
-      const clampedLeft = Math.max(minLeft, Math.min(idealLeft, maxLeft));
+  const showPrev = enableBackButton && !hidePrevButton && Boolean(onPrev) && currentStep > 0;
+  const showSkip = !hideSkipButton;
+  const showNext = !hideNextButton;
 
-      return {
-        left: clampedLeft,
-        maxWidth: TOOLTIP_WIDTH,
-        minWidth: 100,
-      };
-    }
-    return {
-      maxWidth: TOOLTIP_WIDTH,
-      minWidth: 100,
-    };
-  };
+  // Accessibility
+  const a11yProps = getTooltipAccessibilityProps(
+    { id: '', title, description, accessibilityLabel: undefined },
+    currentStep,
+    totalSteps,
+    config
+  );
 
   return (
-    <View style={[styles.container, getTooltipPosition()]}>
-      <View style={styles.tooltipWrapper}>
+    <View style={[internalStyles.container, getTooltipPosition()]}>
+      <View style={internalStyles.tooltipWrapper}>
         {/* Triangle/Arrow */}
         <View style={getTriangleStyle()} />
 
         {/* Tooltip Body */}
         <View
+          {...a11yProps}
           style={[
-            styles.tooltipBody,
-            {
-              backgroundColor,
-              borderRadius,
-            },
-            getTooltipBodyStyle(),
-            containerStyle,
+            internalStyles.tooltipBody,
+            { backgroundColor, borderRadius },
+            tooltipBodyStyle,
+            customContainerStyle,
           ]}
         >
           {/* Header with title and skip */}
-          <View style={styles.header}>
+          <View style={internalStyles.header}>
             <Text
-              style={[styles.titleText, { color: titleColor }, titleStyle]}
+              style={[internalStyles.titleText, { color: titleColor }, customTitleStyle]}
               numberOfLines={2}
             >
               {title}
             </Text>
-            <Pressable
-              style={[
-                styles.skipButton,
-                {
-                  borderColor: skipButtonColor,
-                },
-              ]}
-              onPress={onSkip}
-              hitSlop={8}
-            >
-              <Text style={[styles.skipText, { color: skipButtonColor }]}>
-                {skipButtonText}
-              </Text>
-            </Pressable>
+            {showSkip ? (
+              <Pressable
+                style={[internalStyles.skipButton, { borderColor: skipButtonColor }]}
+                onPress={onSkip}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`${skipButtonText} tour`}
+              >
+                <Text style={[internalStyles.skipText, { color: skipButtonColor }]}>
+                  {skipButtonText}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
 
           {/* Description */}
           <Text
             style={[
-              styles.descriptionText,
+              internalStyles.descriptionText,
               { color: descriptionColor },
-              descriptionStyle,
+              customDescriptionStyle,
             ]}
           >
             {description}
           </Text>
 
           {/* Footer with progress and buttons */}
-          <View style={styles.footer}>
+          <View style={internalStyles.footer}>
             {/* Progress dots */}
-            {showProgressDots && totalSteps > 1 && (
-              <View style={styles.dotsContainer}>
+            {showProgressDots && totalSteps > 1 ? (
+              <View style={internalStyles.dotsContainer}>
                 {Array.from({ length: totalSteps }).map((_, index) => (
                   <View
-                    key={index}
+                    key={`dot-${index}`}
                     style={[
-                      styles.dot,
+                      internalStyles.dot,
                       {
                         backgroundColor:
-                          index === currentStep
-                            ? primaryButtonColor
-                            : descriptionColor,
+                          index === currentStep ? primaryButtonColor : descriptionColor,
                         opacity: index === currentStep ? 1 : 0.3,
                       },
-                      index === currentStep && styles.dotActive,
+                      index === currentStep && internalStyles.dotActive,
                     ]}
                   />
                 ))}
               </View>
-            )}
+            ) : null}
 
             {/* Navigation buttons */}
-            <View style={styles.navigationRow}>
+            <View style={internalStyles.navigationRow}>
               {/* Step counter */}
-              {showStepCounter && totalSteps > 1 && (
-                <Text style={[styles.stepCounter, { color: descriptionColor }]}>
+              {showStepCounter && totalSteps > 1 ? (
+                <Text style={[internalStyles.stepCounter, { color: descriptionColor }]}>
                   {currentStep + 1}/{totalSteps}
                 </Text>
-              )}
+              ) : null}
 
-              <View style={styles.buttonsContainer}>
+              <View style={internalStyles.buttonsContainer}>
                 {/* Back button */}
-                {enableBackButton && onPrev && currentStep > 0 && (
+                {showPrev ? (
                   <Pressable
                     onPress={onPrev}
-                    style={[
-                      styles.button,
-                      { backgroundColor: secondaryButtonColor },
-                    ]}
+                    style={[internalStyles.button, { backgroundColor: secondaryButtonColor }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${prevButtonText}, go to previous step`}
                   >
-                    <Text
-                      style={[styles.buttonText, { color: buttonTextColor }]}
-                    >
+                    <Text style={[internalStyles.buttonText, { color: buttonTextColor }]}>
                       {prevButtonText}
                     </Text>
                   </Pressable>
-                )}
+                ) : null}
                 {/* Next/Done button */}
-                <Pressable
-                  onPress={onNext}
-                  style={[
-                    styles.buttonPrimary,
-                    { backgroundColor: primaryButtonColor },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.buttonPrimaryText,
-                      { color: buttonTextColor },
-                    ]}
+                {showNext ? (
+                  <Pressable
+                    onPress={onNext}
+                    style={[internalStyles.buttonPrimary, { backgroundColor: primaryButtonColor }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      currentStep === totalSteps - 1
+                        ? `${doneButtonText}, finish tour`
+                        : `${nextButtonText}, go to step ${currentStep + 2}`
+                    }
                   >
-                    {currentStep === totalSteps - 1
-                      ? doneButtonText
-                      : nextButtonText}
-                  </Text>
-                </Pressable>
+                    <Text style={[internalStyles.buttonPrimaryText, { color: buttonTextColor }]}>
+                      {currentStep === totalSteps - 1 ? doneButtonText : nextButtonText}
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
             </View>
           </View>
@@ -314,7 +367,7 @@ const Tooltip: React.FC<TooltipProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const internalStyles = StyleSheet.create({
   container: {
     position: 'absolute',
     zIndex: 10000,
@@ -341,12 +394,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     flex: 1,
     ...Platform.select({
-      ios: {
-        fontWeight: '600',
-      },
-      android: {
-        fontWeight: '700',
-      },
+      ios: { fontWeight: '600' },
+      android: { fontWeight: '700' },
+      default: { fontWeight: '600' },
     }),
   },
   skipButton: {
