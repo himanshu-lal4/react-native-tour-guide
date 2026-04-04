@@ -1,0 +1,48 @@
+#!/bin/sh
+
+# ============================================================
+# COMMIT-MSG HOOK — react-native-tour-guide
+# Validates conventional commit format
+# ============================================================
+
+COMMIT_MSG_FILE=$1
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# Skip merge commits
+if echo "$COMMIT_MSG" | grep -qE "^Merge "; then
+  exit 0
+fi
+
+# Validate with commitlint
+npx commitlint --edit "$COMMIT_MSG_FILE" 2>/dev/null
+if [ $? -ne 0 ]; then
+  echo ""
+  echo "❌ INVALID COMMIT MESSAGE"
+  echo ""
+  echo "Your message: \"$COMMIT_MSG\""
+  echo ""
+  echo "Commit messages must follow Conventional Commits format:"
+  echo ""
+  echo "  <type>: <subject>"
+  echo "  <type>(scope): <subject>"
+  echo ""
+  echo "Allowed types:"
+  echo "  feat        New feature"
+  echo "  fix         Bug fix"
+  echo "  docs        Documentation changes"
+  echo "  style       Code style (formatting, no logic change)"
+  echo "  refactor    Code refactoring"
+  echo "  perf        Performance improvement"
+  echo "  test        Add or update tests"
+  echo "  chore       Build, CI, tooling changes"
+  echo "  ci          CI/CD changes"
+  echo "  revert      Revert a previous commit"
+  echo ""
+  echo "Examples:"
+  echo "  feat: add tour persistence hook"
+  echo "  fix: correct tooltip positioning on small screens"
+  echo "  docs: update API reference for v1.0"
+  echo "  chore: upgrade eslint to v9"
+  echo ""
+  exit 1
+fi

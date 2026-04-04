@@ -1,0 +1,21 @@
+title: "[Idea] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share your idea! This is the place for suggestions that aren't fully formed feature requests yet.
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your Idea
+      description: What would you like to see in the library?
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: How would this help you or your users?

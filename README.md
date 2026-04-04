@@ -13,7 +13,7 @@
       <img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="license" />
     </a>
     <a href="https://github.com/himanshu-lal4/react-native-tour-guide">
-      <img src="https://img.shields.io/badge/platform-iOS%20%7C%20Android-lightgrey.svg?style=flat-square" alt="platforms" />
+      <img src="https://img.shields.io/badge/platform-iOS%20%7C%20Android%20%7C%20Web-lightgrey.svg?style=flat-square" alt="platforms" />
     </a>
     <a href="https://expo.dev">
       <img src="https://img.shields.io/badge/Expo-compatible-blue.svg?style=flat-square" alt="expo compatible" />
@@ -29,22 +29,9 @@
   </p>
 
   <p>
-    <strong>✅ Expo & React Native CLI</strong> • <strong>✅ New Architecture Ready</strong> • <strong>✅ Zero Native Dependencies</strong>
+    <strong>✅ Expo & React Native CLI</strong> • <strong>✅ New Architecture Ready</strong> • <strong>✅ Zero Native Dependencies</strong> • <strong>✅ React Native Web</strong>
   </p>
 </div>
-
-<br />
-
-> [!WARNING]
-> **🚧 Under Active Development**
->
-> This library is currently in early development and **not recommended for production use** yet. APIs may change, and there might be bugs or incomplete features.
->
-> **We're looking for contributors and maintainers!** If you're interested in helping shape this library, please check out our [Contributing Guide](CONTRIBUTING.md) or [open an issue](https://github.com/himanshu-lal4/react-native-tour-guide/issues) to get involved. Your contributions are highly valued! 🙏
-
-<br />
-
----
 
 <br />
 
@@ -81,6 +68,7 @@
 
 | Feature                    | This Library                 | Other Solutions       |
 | -------------------------- | ---------------------------- | --------------------- |
+| 🌐 **Web Support**         | React Native Web              | Not supported         |
 | 🎯 **Setup Time**          | < 1 minute                   | 10-30 minutes         |
 | 🎨 **Customization**       | Fully customizable           | Limited options       |
 | 📱 **Platform Support**    | iOS & Android                | Platform specific     |
@@ -93,6 +81,15 @@
 | 📚 **TypeScript**          | Full support                 | Partial/None          |
 | 🌈 **Visual Effects**      | Optional (Blur, Gradient)    | None/Required         |
 | ⚡ **Performance**         | Hardware accelerated         | CPU intensive         |
+| 🎬 **Animated Transitions**| Smooth spotlight morphing     | Jump cuts / none      |
+| 💾 **Tour Persistence**    | Built-in hook                | DIY boilerplate       |
+| ♿ **Accessibility**       | VoiceOver & TalkBack         | None                  |
+| ⏸️ **Pause/Resume**        | Built-in                     | Not supported         |
+| 🧠 **Smart Positioning**   | Auto-detect best position    | Manual per step       |
+| 🔀 **Conditional Steps**   | Built-in (active flag)       | Filter manually       |
+| 🎨 **Theme Presets**       | 4 built-in + custom          | None                  |
+| 💫 **Spotlight Pulse**     | Configurable animated pulse  | Not supported         |
+| 🌐 **React Native Web**   | Full support                 | Not supported         |
 
 </div>
 
@@ -110,12 +107,21 @@
 - [🚀 Quick Start](#-quick-start)
 - [📖 Usage Examples](#-usage-examples)
   - [Multi-Step Tour](#multi-step-tour)
+  - [Spotlight Shapes](#spotlight-shapes)
+  - [Theme Presets](#theme-presets)
+  - [Spotlight Pulse](#spotlight-pulse)
   - [Custom Styling](#custom-styling)
   - [Blur & Gradient Effects](#with-blur-and-gradient-effects)
   - [Automatic Scrolling](#automatic-scrolling)
-  - [Callbacks](#with-callbacks)
+  - [Callbacks & Lifecycle](#callbacks--lifecycle)
+  - [Tour Persistence](#tour-persistence)
+  - [Smart Auto-Positioning](#smart-auto-positioning)
+  - [Conditional Steps](#conditional-steps)
+  - [Backdrop & Spotlight Press](#backdrop--spotlight-press)
+  - [Pause & Resume](#pause--resume)
   - [Custom Tooltip](#custom-tooltip-component)
   - [Programmatic Control](#programmatic-control)
+  - [React Native Web](#react-native-web)
 - [🎨 API Reference](#-api-reference)
 - [🎯 Best Practices](#-best-practices)
 - [💡 Tips & Tricks](#-tips--tricks)
@@ -199,6 +205,48 @@
     <td>
       🎯 <strong>Production Ready</strong><br/>
       <sub>Battle-tested in real-world apps</sub>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      🎬 <strong>Animated Transitions</strong><br/>
+      <sub>Smooth spotlight morphing between steps</sub>
+    </td>
+    <td>
+      💾 <strong>Tour Persistence</strong><br/>
+      <sub>Built-in "show only once" with any storage</sub>
+    </td>
+    <td>
+      ♿ <strong>Accessibility</strong><br/>
+      <sub>VoiceOver & TalkBack with auto-announcements</sub>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      ⏸️ <strong>Pause & Resume</strong><br/>
+      <sub>Coordinate with modals and other overlays</sub>
+    </td>
+    <td>
+      🧠 <strong>Smart Positioning</strong><br/>
+      <sub>Auto-detect best tooltip placement</sub>
+    </td>
+    <td>
+      🔀 <strong>Conditional Steps</strong><br/>
+      <sub>Show/hide steps dynamically with correct numbering</sub>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      🎨 <strong>Theme Presets</strong><br/>
+      <sub>4 built-in themes + custom theme builder</sub>
+    </td>
+    <td>
+      💫 <strong>Spotlight Pulse</strong><br/>
+      <sub>Animated pulsing border around spotlight</sub>
+    </td>
+    <td>
+      🌐 <strong>React Native Web</strong><br/>
+      <sub>Full web support via react-native-web</sub>
     </td>
   </tr>
 </table>
@@ -404,6 +452,145 @@ startTour([
 ]);
 ```
 
+### Theme Presets
+
+Use built-in themes for instant, coordinated styling:
+
+```tsx
+import { darkTheme, lightTheme, vibrantTheme } from '@wrack/react-native-tour-guide';
+
+// Use a preset directly
+startTour(steps, { ...darkTheme });
+
+// Override specific values
+startTour(steps, {
+  ...vibrantTheme,
+  tooltipStyles: { ...vibrantTheme.tooltipStyles, borderRadius: 24 },
+});
+```
+
+Create custom themes based on the dark theme:
+
+```tsx
+import { createTheme } from '@wrack/react-native-tour-guide';
+
+const brandTheme = createTheme({
+  tooltipStyles: { primaryButtonColor: '#FF6B35', backgroundColor: '#1B1B3A' },
+  spotlightStyles: { overlayOpacity: 0.7 },
+});
+
+startTour(steps, { ...brandTheme });
+```
+
+Available presets: `darkTheme`, `lightTheme`, `minimalTheme`, `vibrantTheme`.
+
+### Spotlight Pulse
+
+Add an animated pulsing border around the spotlight:
+
+```tsx
+startTour(steps, {
+  spotlightStyles: {
+    enablePulse: true,
+    pulseColor: '#00BFFF',
+    pulseWidth: 3,
+    pulseDuration: 1200,
+    pulseMinOpacity: 0.3,
+    pulseMaxOpacity: 0.9,
+  },
+});
+```
+
+Combine with themes:
+
+```tsx
+import { vibrantTheme } from '@wrack/react-native-tour-guide';
+
+startTour(steps, {
+  ...vibrantTheme,
+  spotlightStyles: {
+    ...vibrantTheme.spotlightStyles,
+    enablePulse: true,
+    pulseColor: '#E94560',
+  },
+});
+```
+
+### Spotlight Shapes
+
+Choose from 9 built-in shapes to match the visual appearance of your target elements:
+
+```tsx
+startTour([
+  // Pill shape — perfect for buttons with fully rounded ends
+  { id: 'btn', targetRef: buttonRef, title: 'Button', description: '...', spotlightShape: 'pill' },
+  // Ellipse — oval that matches target dimensions
+  { id: 'avatar', targetRef: avatarRef, title: 'Avatar', description: '...', spotlightShape: 'ellipse' },
+  // Circle — equalized square bounding box
+  { id: 'icon', targetRef: iconRef, title: 'Icon', description: '...', spotlightShape: 'circle' },
+  // Diamond, triangle, hexagon, star
+  { id: 'badge', targetRef: badgeRef, title: 'Badge', description: '...', spotlightShape: 'diamond' },
+]);
+```
+
+**Auto-match a component's border radius** — just pass the same style:
+
+```tsx
+const styles = StyleSheet.create({
+  card: { borderRadius: 20, borderBottomLeftRadius: 0, backgroundColor: '#fff' },
+});
+
+<View ref={cardRef} style={styles.card} />
+
+// Library auto-extracts all border radius values from targetStyle
+{
+  id: 'card',
+  targetRef: cardRef,
+  targetStyle: styles.card,  // ← spotlight automatically matches the shape
+  title: 'Card',
+  description: 'Spotlight matches the exact border radius!',
+}
+```
+
+Or specify radii manually:
+
+```tsx
+// Uniform radius
+{ id: 'btn', targetRef: btnRef, title: 'Button', description: '...', spotlightBorderRadius: 20 }
+
+// Per-corner radius
+{
+  id: 'sheet',
+  targetRef: sheetRef,
+  title: 'Bottom Sheet',
+  description: 'Only top corners are rounded.',
+  spotlightBorderRadius: { topLeft: 24, topRight: 24, bottomRight: 0, bottomLeft: 0 },
+}
+```
+
+> Priority: explicit `spotlightBorderRadius` > auto-extracted from `targetStyle` > default (12)
+
+Custom SVG path shapes:
+
+```tsx
+{
+  id: 'custom',
+  targetRef: myRef,
+  title: 'Custom Shape',
+  description: 'Any shape you want!',
+  spotlightShape: 'custom',
+  customSpotlightPath: ({ x, y, width, height }) => {
+    // Return any valid SVG path string
+    const cx = x + width / 2;
+    return `M${cx},${y} L${x + width},${y + height} L${x},${y + height} Z`;
+  },
+}
+```
+
+Available shapes: `rectangle` (default), `circle`, `ellipse`, `pill`, `triangle`, `diamond`, `hexagon`, `star`, `custom`.
+
+> **Note:** Rect-family shapes (rectangle, circle, ellipse, pill) animate smoothly between steps. Path-family shapes (triangle, diamond, hexagon, star, custom) snap to position.
+
 ### Custom Styling
 
 ```tsx
@@ -468,28 +655,163 @@ startTour([
 ]);
 ```
 
-### With Callbacks
+### Callbacks & Lifecycle
+
+```tsx
+startTour(steps, {
+  // Tour-level lifecycle events
+  onTourStart: () => console.log('Tour started'),
+  onTourEnd: (completed) => {
+    console.log(completed ? 'Tour finished' : 'Tour skipped');
+  },
+  onStepChange: (from, to) => {
+    analytics.track('tour_step', { from, to });
+  },
+  // Async gate — return false to block navigation
+  beforeStepChange: async (from, to) => {
+    if (to === 3) {
+      const ready = await checkIfFeatureReady();
+      return ready; // false blocks the transition
+    }
+    return true;
+  },
+});
+
+// Per-step callbacks still work
+startTour([{
+  id: 'step1',
+  targetRef: myRef,
+  title: 'First Step',
+  description: 'This is the first step.',
+  onNext: () => console.log('Moving to next step'),
+  onSkip: () => console.log('Tour skipped'),
+}]);
+```
+
+### Tour Persistence
+
+Built-in "show only once" support with any storage backend:
+
+```tsx
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useTourPersistence } from '@wrack/react-native-tour-guide';
+
+function MyScreen() {
+  // Pass any storage adapter (AsyncStorage, MMKV, etc.)
+  const { startTour, resetTour, isTourCompleted } = useTourPersistence(AsyncStorage);
+
+  useEffect(() => {
+    // Automatically skips if user has already seen this tour
+    startTour(steps, { tourId: 'onboarding' });
+  }, []);
+
+  // Force show again after an update
+  const handleShowAgain = async () => {
+    await resetTour('onboarding');
+    startTour(steps, { tourId: 'onboarding' }, true);
+  };
+}
+```
+
+Works with MMKV too:
+
+```tsx
+import { MMKV } from 'react-native-mmkv';
+const storage = new MMKV();
+
+// MMKV adapter — just wrap the sync API
+const mmkvAdapter = {
+  getItem: (key) => storage.getString(key) ?? null,
+  setItem: (key, value) => storage.set(key, value),
+  removeItem: (key) => storage.delete(key),
+};
+
+const { startTour } = useTourPersistence(mmkvAdapter);
+```
+
+### Smart Auto-Positioning
+
+Let the library pick the best tooltip position automatically:
+
+```tsx
+// Per-step: set tooltipPosition to 'auto'
+startTour([{
+  id: 'step1',
+  targetRef: myRef,
+  title: 'Smart Position',
+  description: 'Tooltip auto-positions based on available space.',
+  tooltipPosition: 'auto',
+}]);
+
+// Or enable globally for all steps
+startTour(steps, {
+  autoPositionTooltip: true,
+});
+```
+
+### Conditional Steps
+
+Show or hide steps dynamically — numbering adjusts automatically:
+
+```tsx
+const isPremiumUser = useIsPremium();
+
+startTour([
+  { id: 'welcome', targetRef: welcomeRef, title: 'Welcome', description: '...' },
+  {
+    id: 'premium-feature',
+    targetRef: premiumRef,
+    title: 'Premium Feature',
+    description: 'Only shown to free users.',
+    active: !isPremiumUser, // hidden for premium users
+  },
+  { id: 'done', targetRef: doneRef, title: 'All Set', description: '...' },
+]);
+```
+
+### Backdrop & Spotlight Press
+
+Configure what happens when users tap the dark overlay or the highlighted area:
 
 ```tsx
 startTour([
   {
     id: 'step1',
     targetRef: myRef,
-    title: 'First Step',
-    description: 'This is the first step.',
-    onNext: () => {
-      console.log('Moving to next step');
-      // Track analytics, update state, etc.
-    },
-    onPrev: () => {
-      console.log('Going back');
-    },
-    onSkip: () => {
-      console.log('Tour skipped');
-      // Save that user skipped the tour
+    title: 'Tap the backdrop',
+    description: 'Tapping outside advances to the next step.',
+    backdropBehavior: 'next', // 'dismiss' | 'next' | 'none' | () => void
+  },
+  {
+    id: 'step2',
+    targetRef: buttonRef,
+    title: 'Tap the button',
+    description: 'Try tapping the highlighted button!',
+    onSpotlightPress: () => {
+      // User tapped the actual highlighted element
+      navigation.navigate('Details');
     },
   },
 ]);
+
+// Set a global default
+startTour(steps, {
+  defaultBackdropBehavior: 'next',
+});
+```
+
+### Pause & Resume
+
+Coordinate with modals, bottom sheets, or other overlays:
+
+```tsx
+const { pauseTour, resumeTour, isPaused } = useTourGuide();
+
+// Pause when a modal opens
+const handleModalOpen = () => pauseTour();
+
+// Resume when it closes — tour picks up where it left off
+const handleModalClose = () => resumeTour();
 ```
 
 ### Custom Tooltip Component
@@ -517,31 +839,43 @@ startTour(steps, {
 ### Programmatic Control
 
 ```tsx
-const { startTour, nextStep, prevStep, skipTour, endTour, isActive } =
-  useTourGuide();
+const {
+  startTour, nextStep, prevStep, skipTour, endTour,
+  goToStep, pauseTour, resumeTour,
+  isActive, isPaused, currentStep, activeTourId,
+} = useTourGuide();
 
-// Start a tour
-const handleStartTour = () => {
-  startTour(steps);
-};
-
-// Control the tour programmatically
-const handleManualNext = () => {
-  nextStep();
-};
-
-const handleManualPrev = () => {
-  prevStep();
-};
-
-const handleSkip = () => {
-  skipTour();
-};
-
-const handleEnd = () => {
-  endTour();
-};
+startTour(steps);     // Start
+nextStep();           // Next
+prevStep();           // Previous
+goToStep(2);          // Jump to step 3
+pauseTour();          // Pause (hides overlay)
+resumeTour();         // Resume
+skipTour();           // Skip (triggers onTourEnd(false))
+endTour();            // End immediately
 ```
+
+### React Native Web
+
+The library works out of the box with `react-native-web`. No additional configuration is needed.
+
+```bash
+# Install alongside react-native-web
+npm install @wrack/react-native-tour-guide react-native-svg react-native-web
+```
+
+**What works on web:**
+- All core tour functionality (steps, navigation, tooltips, spotlight)
+- Animated spotlight transitions and pulse effects
+- Theme presets and custom themes
+- Tour persistence
+- Accessibility (ARIA live regions replace native announcements)
+- Smart auto-positioning
+
+**Web-specific notes:**
+- Blur and gradient effects require native modules and are not available on web — they gracefully degrade to the standard overlay
+- Element measurement uses `getBoundingClientRect` instead of `measureInWindow`
+- `StatusBar` height adjustments are automatically skipped on web
 
 ## 🎨 API Reference
 
@@ -551,32 +885,75 @@ Hook to access tour guide functionality.
 
 **Returns:**
 
-- `startTour(steps, config?)` - Start a tour with given steps and optional configuration
-- `nextStep()` - Move to the next step
-- `prevStep()` - Move to the previous step
-- `skipTour()` - Skip the entire tour
-- `endTour()` - End the tour programmatically
-- `isActive` - Boolean indicating if a tour is currently active
-- `currentStep` - Current step index (0-based)
-- `steps` - Array of tour steps
-- `config` - Current tour configuration
+| Property | Type | Description |
+|----------|------|-------------|
+| `startTour(steps, config?)` | function | Start a tour with given steps |
+| `nextStep()` | function | Move to the next step |
+| `prevStep()` | function | Move to the previous step |
+| `skipTour()` | function | Skip the entire tour |
+| `endTour()` | function | End the tour programmatically |
+| `goToStep(index)` | function | Jump to a specific step |
+| `pauseTour()` | function | Pause the tour (hides overlay, keeps state) |
+| `resumeTour()` | function | Resume a paused tour |
+| `isActive` | boolean | Whether a tour is currently active |
+| `isPaused` | boolean | Whether the tour is paused |
+| `currentStep` | number | Current step index (0-based) |
+| `activeSteps` | TourStep[] | Filtered steps (only active ones) |
+| `activeTourId` | string? | ID of the current tour |
+| `config` | TourGuideConfig? | Current tour configuration |
+
+### `useTourPersistence(storage)`
+
+Hook for "show only once" tour persistence.
+
+```tsx
+const { startTour, resetTour, isTourCompleted, markCompleted } = useTourPersistence(storage);
+```
+
+| Method | Description |
+|--------|-------------|
+| `startTour(steps, config?, force?)` | Starts tour only if not completed. Returns `Promise<boolean>`. |
+| `isTourCompleted(tourId)` | Check if a tour was completed. Returns `Promise<boolean>`. |
+| `resetTour(tourId)` | Reset a tour so it shows again. |
+| `markCompleted(tourId)` | Manually mark a tour as completed. |
 
 ### `TourStep` Interface
 
 ```typescript
 interface TourStep {
-  id: string; // Unique identifier
-  targetRef?: React.RefObject<any>; // Ref to the target component
-  title: string; // Tooltip title
-  description: string; // Tooltip description
-  tooltipPosition?: 'top' | 'bottom' | 'left' | 'right';
-  spotlightShape?: 'circle' | 'rectangle';
-  spotlightPadding?: number; // Padding around spotlight (default: 8)
-  spotlightBorderRadius?: number; // Border radius for rectangle (default: 12)
+  id: string;                    // Unique identifier
+  targetRef?: RefObject<any>;    // Ref to the target component
+  title: string;                 // Tooltip title
+  description: string;           // Tooltip description
+
+  // Positioning & appearance
+  tooltipPosition?: 'top' | 'bottom' | 'left' | 'right' | 'auto';
+  spotlightShape?: SpotlightShape; // 'rectangle' | 'circle' | 'ellipse' | 'pill' | 'triangle' | 'diamond' | 'hexagon' | 'star' | 'custom'
+  customSpotlightPath?: (bounds: ShapeBounds) => string;
+  spotlightPadding?: number;     // Default: 8
+  spotlightBorderRadius?: number; // Uniform override (default: 12)
+  targetStyle?: ViewStyle | ViewStyle[];  // Auto-extract per-corner border radius
   scrollToTarget?: ScrollToTargetConfig;
-  onNext?: () => void; // Callback when moving to next step
-  onPrev?: () => void; // Callback when moving to previous step
-  onSkip?: () => void; // Callback when skipping tour
+
+  // Callbacks
+  onNext?: () => void;
+  onPrev?: () => void;
+  onSkip?: () => void;
+  onSpotlightPress?: () => void; // Called when spotlight area is tapped
+
+  // Behavior
+  active?: boolean;              // Include/exclude step (default: true)
+  backdropBehavior?: 'dismiss' | 'next' | 'none' | (() => void);
+  delayBefore?: number;          // Delay in ms before showing step
+  autoAdvance?: number;          // Auto-advance after ms (0 = disabled)
+
+  // Button visibility
+  hideNextButton?: boolean;
+  hidePrevButton?: boolean;
+  hideSkipButton?: boolean;
+
+  // Accessibility
+  accessibilityLabel?: string;   // Custom screen reader label
 }
 ```
 
@@ -584,36 +961,78 @@ interface TourStep {
 
 ```typescript
 interface TourGuideConfig {
-  tooltipStyles?: {
-    backgroundColor?: string;
-    borderRadius?: number;
-    titleColor?: string;
-    descriptionColor?: string;
-    buttonTextColor?: string;
-    primaryButtonColor?: string;
-    secondaryButtonColor?: string;
-    skipButtonColor?: string;
-    titleStyle?: TextStyle;
-    descriptionStyle?: TextStyle;
-    containerStyle?: ViewStyle;
-  };
-  spotlightStyles?: {
-    overlayOpacity?: number; // 0-1 (default: 0.6)
-    overlayColor?: string; // Default: 'black'
-    blurAmount?: number; // 0-100 (default: 4)
-    enableBlur?: boolean; // Default: false
-    enableGradient?: boolean; // Default: false
-    gradientColors?: string[];
-  };
-  showProgressDots?: boolean; // Default: false
-  showStepCounter?: boolean; // Default: true
-  enableBackButton?: boolean; // Default: true
-  nextButtonText?: string; // Default: 'Next'
-  prevButtonText?: string; // Default: 'Back'
-  skipButtonText?: string; // Default: 'Skip'
-  doneButtonText?: string; // Default: 'Done'
+  // Styling
+  tooltipStyles?: TooltipStyles;
+  spotlightStyles?: SpotlightStyles;
+
+  // Button text
+  nextButtonText?: string;       // Default: 'Next'
+  prevButtonText?: string;       // Default: 'Back'
+  skipButtonText?: string;       // Default: 'Skip'
+  doneButtonText?: string;       // Default: 'Done'
+
+  // UI options
+  showProgressDots?: boolean;    // Default: false
+  showStepCounter?: boolean;     // Default: true
+  enableBackButton?: boolean;    // Default: true
   renderTooltip?: (props: TooltipProps) => ReactNode;
-  animationDuration?: number; // Default: 300ms
+
+  // Animation & layout
+  animationDuration?: number;    // Default: 300ms
+  tooltipWidth?: number;         // Default: 320
+  triangleSize?: number;         // Default: 12
+  tooltipOffset?: number;        // Default: 8
+  safeZoneOffset?: number;       // Default: 120
+
+  // Behavior
+  tourId?: string;               // Unique ID (used for persistence)
+  autoPositionTooltip?: boolean; // Default: false
+  defaultBackdropBehavior?: BackdropBehavior;
+
+  // Lifecycle events
+  onTourStart?: () => void;
+  onTourEnd?: (completed: boolean) => void;
+  onStepChange?: (from: number, to: number) => void;
+  beforeStepChange?: (from: number, to: number) => boolean | Promise<boolean>;
+
+  // Accessibility
+  enableAccessibility?: boolean; // Default: true
+  accessibilityLabelPrefix?: string; // Default: 'Tour guide'
+}
+```
+
+### `TourTheme` Interface
+
+```typescript
+interface TourTheme {
+  tooltipStyles: TooltipStyles;
+  spotlightStyles: SpotlightStyles;
+}
+```
+
+Built-in presets: `darkTheme`, `lightTheme`, `minimalTheme`, `vibrantTheme`. Use `createTheme(overrides)` to build custom themes.
+
+### `SpotlightStyles` Pulse Properties
+
+```typescript
+// Added to SpotlightStyles
+enablePulse?: boolean;       // Default: false
+pulseColor?: string;         // Default: '#FFFFFF'
+pulseWidth?: number;         // Default: 2 (px)
+pulseDuration?: number;      // Default: 1500 (ms, full cycle)
+pulseMinOpacity?: number;    // Default: 0.2
+pulseMaxOpacity?: number;    // Default: 0.8
+```
+
+### `TourStorage` Interface
+
+Implement this to use any storage backend with `useTourPersistence`:
+
+```typescript
+interface TourStorage {
+  getItem: (key: string) => Promise<string | null> | string | null;
+  setItem: (key: string, value: string) => Promise<void> | void;
+  removeItem: (key: string) => Promise<void> | void;
 }
 ```
 
@@ -621,67 +1040,55 @@ interface TourGuideConfig {
 
 ```typescript
 interface ScrollToTargetConfig {
-  scrollRef: React.RefObject<any>; // Reference to ScrollView
-  offset?: number; // Additional offset (positive = down, negative = up)
-  animated?: boolean; // Animate scroll (default: true)
-  absolute?: boolean; // If true, offset is absolute position
-  getCurrentScrollOffset?: () => number; // Function to get current scroll Y position
+  scrollRef: RefObject<ScrollView>;
+  offset?: number;               // Additional offset (positive = down)
+  animated?: boolean;            // Default: true
+  absolute?: boolean;            // Absolute vs relative scroll
+  getCurrentScrollOffset?: () => number;
 }
 ```
 
 ## 🎯 Best Practices
 
-1. **Timing**: Start tours with a small delay (500-1000ms) to ensure layout is measured correctly
-2. **Persistence**: Implement logic to show tours only once (use AsyncStorage or similar)
-3. **User Control**: Always provide a "Skip" option for better UX
-4. **Keep It Short**: Limit tours to 3-5 steps for better engagement
-5. **Contextual**: Show tours when users first encounter a feature
-6. **Test Thoroughly**: Test on different screen sizes and orientations
+1. **Use `delayBefore`** instead of manual `setTimeout` — the library handles timing for you
+2. **Use `useTourPersistence`** — built-in "show only once" with any storage backend
+3. **Always provide Skip** — never trap users in a tour
+4. **Keep it short** — 3-5 steps maximum for engagement
+5. **Use `tooltipPosition: 'auto'`** — let the library pick the best position
+6. **Use `tourId`** — enables persistence, analytics, and multiple tour management
+7. **Test with screen readers** — accessibility is enabled by default
+8. **Use `beforeStepChange`** — validate state before transitioning (e.g., wait for data to load)
+9. **Use `pauseTour`** — coordinate with modals and bottom sheets
+10. **Use conditional steps** — set `active: false` instead of filtering arrays manually
 
 ## 💡 Tips & Tricks
 
-### Persistent Tours
+### Delayed Steps
+
+For components that take time to render or animate, use `delayBefore`:
 
 ```tsx
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const TOUR_KEY = '@my_feature_tour_completed';
-
-// Check if tour was already shown
-const checkTourStatus = async () => {
-  const hasSeenTour = await AsyncStorage.getItem(TOUR_KEY);
-  if (!hasSeenTour) {
-    startTour(steps);
-  }
-};
-
-// Mark tour as completed
-const completeTour = async () => {
-  await AsyncStorage.setItem(TOUR_KEY, 'true');
-};
-
-// Use in onNext or onSkip callbacks
 startTour([
   {
-    // ... step config
-    onNext: completeTour,
-    onSkip: completeTour,
+    id: 'animated-element',
+    targetRef: myRef,
+    title: 'After Animation',
+    description: 'This waits for the animation to finish.',
+    delayBefore: 800, // Wait 800ms before measuring
   },
 ]);
 ```
 
-### Measuring Components
+### Auto-Advancing Tours
 
-For components that take time to render or animate, add a delay:
+Create guided demos that play automatically:
 
 ```tsx
-useEffect(() => {
-  const timer = setTimeout(() => {
-    startTour(steps);
-  }, 1000); // Wait for animations/layouts
-
-  return () => clearTimeout(timer);
-}, []);
+startTour([
+  { id: 'step1', targetRef: ref1, title: 'Step 1', description: '...', autoAdvance: 3000 },
+  { id: 'step2', targetRef: ref2, title: 'Step 2', description: '...', autoAdvance: 3000 },
+  { id: 'step3', targetRef: ref3, title: 'Done!', description: '...' },
+]);
 ```
 
 ### Handling Tab Bars

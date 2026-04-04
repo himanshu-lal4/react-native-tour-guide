@@ -1,0 +1,64 @@
+name: Feature Request
+description: Suggest an idea for the library
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to suggest a feature! Please fill out the form below.
+
+  - type: checkboxes
+    id: duplicates
+    attributes:
+      label: Duplicate Check
+      options:
+        - label: I have searched existing issues and this feature hasn't been requested before
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this feature solve? What are you trying to do that you can't?
+      placeholder: "I'm always frustrated when..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How would you like this to work? Include API examples if possible.
+      placeholder: |
+        ```tsx
+        // Example of how the API might look
+        startTour(steps, {
+          newFeature: true,
+        });
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What workarounds or alternative approaches have you tried?
+
+  - type: dropdown
+    id: importance
+    attributes:
+      label: How important is this feature to you?
+      options:
+        - Nice to have
+        - Important — I have a workaround but it's not ideal
+        - Critical — blocking my adoption of this library
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Screenshots, links, or anything else that helps explain the request.
