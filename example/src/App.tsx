@@ -123,7 +123,7 @@ function AppContent() {
         id: 'hero-welcome',
         targetRef: mainBtnRef,
         title: '👋 Meet Tour Guide',
-        description: 'Spotlight onboarding for React Native — integrate in under a minute.',
+        description: 'Spotlight onboarding for React Native — drop-in, declarative, and customizable.',
         targetStyle: styles.startBtn,
         autoAdvance: pace(),
       },

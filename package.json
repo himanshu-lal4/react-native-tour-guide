@@ -100,9 +100,7 @@
     "app-intro",
     "first-time-user-experience",
     "ftue",
-    "react-native-svg",
-    "react-native-web",
-    "web"
+    "react-native-svg"
   ],
   "repository": {
     "type": "git",
