@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
+import type { LayoutChangeEvent } from 'react-native';
 
 import type { TourGuideConfig, TooltipProps } from './types';
 import { computeTooltipPosition } from './utils';
@@ -10,6 +11,10 @@ const DEFAULT_CONFIG: TourGuideConfig = {};
 const DEFAULT_TOOLTIP_WIDTH = 320;
 const DEFAULT_TRIANGLE_SIZE = 12;
 const DEFAULT_OFFSET = 8;
+
+// Module-scoped so it's a stable reference used as a default prop (an inline
+// object literal default re-creates each render and can cause render loops).
+const ZERO_INSETS = { top: 0, bottom: 0, left: 0, right: 0 };
 
 /**
  * Tooltip component that displays tour information.
@@ -33,6 +38,7 @@ const Tooltip: React.FC<TooltipProps> = ({
   hideSkipButton = false,
   screenWidth = 0,
   screenHeight = 0,
+  insets = ZERO_INSETS,
 }) => {
   const {
     tooltipStyles: tooltipStylesConfig,
@@ -68,6 +74,15 @@ const Tooltip: React.FC<TooltipProps> = ({
 
   const targetCenterX = position.x + targetWidth / 2;
 
+  // Measure the tooltip's real height so we can keep it fully on-screen. Until
+  // the first layout pass we use a conservative estimate.
+  const [measuredHeight, setMeasuredHeight] = useState(0);
+  const H = measuredHeight || 160;
+  const onBodyLayout = (e: LayoutChangeEvent) => {
+    const h = e.nativeEvent.layout.height;
+    if (h > 0 && Math.abs(h - measuredHeight) > 1) setMeasuredHeight(h);
+  };
+
   // Smart auto-positioning
   const tooltipPosition = useMemo(() => {
     if (tooltipPositionProp === 'auto' && screenWidth > 0 && screenHeight > 0) {
@@ -101,53 +116,67 @@ const Tooltip: React.FC<TooltipProps> = ({
     if (tooltipPosition === 'top' || tooltipPosition === 'bottom') {
       const pad = 16;
       const idealLeft = targetCenterX - TOOLTIP_WIDTH / 2;
-      const minLeft = pad;
-      const maxLeft = screenWidth - TOOLTIP_WIDTH - pad;
-      const clampedLeft = Math.max(minLeft, Math.min(idealLeft, maxLeft));
+      const minLeft = insets.left + pad;
+      const maxLeft = screenWidth - insets.right - TOOLTIP_WIDTH - pad;
+      // Guard against negative range on very narrow screens.
+      const clampedLeft = Math.max(minLeft, Math.min(idealLeft, Math.max(minLeft, maxLeft)));
 
       return { left: clampedLeft, maxWidth: TOOLTIP_WIDTH, minWidth: 100 };
     }
     return { left: undefined as number | undefined, maxWidth: TOOLTIP_WIDTH, minWidth: 100 };
-  }, [tooltipPosition, targetCenterX, TOOLTIP_WIDTH, screenWidth]);
+  }, [tooltipPosition, targetCenterX, TOOLTIP_WIDTH, screenWidth, insets.left, insets.right]);
 
-  const getTooltipPosition = () => {
+  // Compute the container position. Vertical placement is always expressed as an
+  // absolute `top` and clamped against the measured height so the tooltip can
+  // never run off the top or bottom of the screen (the off-screen bug).
+  const placement = useMemo(() => {
     const SAFE_MARGIN = 8;
+    const minTop = insets.top + SAFE_MARGIN;
+    const maxTop = screenHeight - insets.bottom - H - SAFE_MARGIN;
+    const clampTop = (t: number) => Math.max(minTop, Math.min(t, Math.max(minTop, maxTop)));
 
     switch (tooltipPosition) {
       case 'top': {
-        const bottomVal = screenHeight - position.y + OFFSET + TRIANGLE_SIZE;
-        // Clamp so tooltip doesn't go above the screen
-        return { bottom: Math.min(bottomVal, screenHeight - SAFE_MARGIN) };
+        const top = clampTop(position.y - OFFSET - TRIANGLE_SIZE - H);
+        return { style: { top } as const, arrowVertical: undefined };
       }
-      case 'bottom': {
-        const topVal = position.y + targetHeight + OFFSET + TRIANGLE_SIZE;
-        // Clamp so tooltip doesn't go below the screen
-        return { top: Math.min(topVal, screenHeight - SAFE_MARGIN) };
-      }
-      case 'left': {
-        const topVal = Math.max(
-          SAFE_MARGIN,
-          Math.min(position.y + targetHeight / 2 - 40, screenHeight - SAFE_MARGIN)
-        );
-        return {
-          right: screenWidth - position.x + OFFSET + TRIANGLE_SIZE,
-          top: topVal,
-        };
-      }
+      case 'left':
       case 'right': {
-        const topVal = Math.max(
-          SAFE_MARGIN,
-          Math.min(position.y + targetHeight / 2 - 40, screenHeight - SAFE_MARGIN)
+        const top = clampTop(position.y + targetHeight / 2 - H / 2);
+        const horizontal =
+          tooltipPosition === 'left'
+            ? { right: screenWidth - position.x + OFFSET + TRIANGLE_SIZE }
+            : { left: position.x + targetWidth + OFFSET + TRIANGLE_SIZE };
+        // Keep the arrow pointing at the target's vertical center, but clamp it
+        // within the (possibly repositioned) tooltip body.
+        const rawArrow = position.y + targetHeight / 2 - top - TRIANGLE_SIZE;
+        const arrowVertical = Math.max(
+          borderRadius,
+          Math.min(rawArrow, H - borderRadius - TRIANGLE_SIZE * 2)
         );
-        return {
-          left: position.x + targetWidth + OFFSET + TRIANGLE_SIZE,
-          top: topVal,
-        };
+        return { style: { ...horizontal, top }, arrowVertical };
       }
-      default:
-        return { top: position.y + targetHeight + OFFSET + TRIANGLE_SIZE };
+      case 'bottom':
+      default: {
+        const top = clampTop(position.y + targetHeight + OFFSET + TRIANGLE_SIZE);
+        return { style: { top } as const, arrowVertical: undefined };
+      }
     }
-  };
+  }, [
+    tooltipPosition,
+    position.x,
+    position.y,
+    targetWidth,
+    targetHeight,
+    screenWidth,
+    screenHeight,
+    H,
+    OFFSET,
+    TRIANGLE_SIZE,
+    borderRadius,
+    insets.top,
+    insets.bottom,
+  ]);
 
   const getTriangleStyle = () => {
     const baseTriangle = {
@@ -205,7 +234,7 @@ const Tooltip: React.FC<TooltipProps> = ({
           borderLeftColor: backgroundColor,
           borderLeftWidth: TRIANGLE_SIZE,
           right: -TRIANGLE_SIZE + OVERLAP,
-          top: 20,
+          top: placement.arrowVertical ?? 20,
         };
       case 'right':
         return {
@@ -217,7 +246,7 @@ const Tooltip: React.FC<TooltipProps> = ({
           borderRightColor: backgroundColor,
           borderRightWidth: TRIANGLE_SIZE,
           left: -TRIANGLE_SIZE + OVERLAP,
-          top: 20,
+          top: placement.arrowVertical ?? 20,
         };
       default:
         return {
@@ -247,7 +276,7 @@ const Tooltip: React.FC<TooltipProps> = ({
   );
 
   return (
-    <View style={[internalStyles.container, getTooltipPosition()]}>
+    <View style={[internalStyles.container, placement.style]}>
       <View style={internalStyles.tooltipWrapper}>
         {/* Triangle/Arrow */}
         <View style={getTriangleStyle()} />
@@ -255,6 +284,7 @@ const Tooltip: React.FC<TooltipProps> = ({
         {/* Tooltip Body */}
         <View
           {...a11yProps}
+          onLayout={onBodyLayout}
           style={[
             internalStyles.tooltipBody,
             { backgroundColor, borderRadius },

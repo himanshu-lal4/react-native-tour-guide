@@ -119,10 +119,10 @@ describe('validateRef', () => {
     warnSpy.mockRestore();
   });
 
-  it('returns false and warns when ref is undefined', () => {
+  it('returns false WITHOUT warning when ref is undefined (intentional no-target step)', () => {
     const result = validateRef(undefined, 'step1');
     expect(result).toBe(false);
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Step "step1" has no targetRef'));
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 
   it('returns false and warns when ref.current is null', () => {
@@ -202,5 +202,23 @@ describe('extractBorderRadius', () => {
   it('handles array of styles (flattened)', () => {
     const result = extractBorderRadius([{ borderRadius: 10 }, { borderTopLeftRadius: 20 }]);
     expect(result).toStrictEqual({ topLeft: 20, topRight: 10, bottomRight: 10, bottomLeft: 10 });
+  });
+
+  it('resolves a percentage radius against the target shorter side (circle stays round)', () => {
+    // A circular 48x48 avatar styled with borderRadius: '50%' should resolve to 24.
+    expect(extractBorderRadius({ borderRadius: '50%' }, { width: 48, height: 48 })).toBe(24);
+  });
+
+  it('resolves percentage against the shorter side for a pill', () => {
+    // 200x40 pill, '50%' → 50% of min(200,40)=40 → 20 (fully rounded ends).
+    expect(extractBorderRadius({ borderRadius: '50%' }, { width: 200, height: 40 })).toBe(20);
+  });
+
+  it('handles fractional percentages', () => {
+    expect(extractBorderRadius({ borderRadius: '25%' }, { width: 80, height: 80 })).toBe(20);
+  });
+
+  it('falls back to base/0 for percentages when no target is provided', () => {
+    expect(extractBorderRadius({ borderRadius: '50%' })).toBe(0);
   });
 });
