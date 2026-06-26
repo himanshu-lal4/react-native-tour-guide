@@ -138,6 +138,72 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
     return shapeResult.bounds;
   }, [shapeResult]);
 
+  // The dark overlay is drawn as a single even-odd path: a full-screen rectangle
+  // with the spotlight punched out as a real hole. This replaces an SVG <Mask>,
+  // which on the new architecture (Fabric) leaves the cutout partially filled
+  // (a white film over the highlighted element) instead of fully transparent.
+  const [overlayPathD, setOverlayPathD] = useState('');
+  const animVals = useRef({ x: 0, y: 0, w: 0, h: 0, rx: 0 });
+
+  const roundedRectSubpath = (x: number, y: number, w: number, h: number, r: number) => {
+    const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+    if (rr <= 0) return `M${x},${y} H${x + w} V${y + h} H${x} Z`;
+    return (
+      `M${x + rr},${y} H${x + w - rr} A${rr},${rr} 0 0 1 ${x + w},${y + rr} ` +
+      `V${y + h - rr} A${rr},${rr} 0 0 1 ${x + w - rr},${y + h} ` +
+      `H${x + rr} A${rr},${rr} 0 0 1 ${x},${y + h - rr} ` +
+      `V${y + rr} A${rr},${rr} 0 0 1 ${x + rr},${y} Z`
+    );
+  };
+
+  const buildOverlayPath = (innerSubpath: string) =>
+    `M0,0 H${screenWidth} V${screenHeight} H0 Z ${innerSubpath}`;
+
+  // Keep the overlay path in sync with the animated spotlight (rect shapes).
+  // Per-corner (path) shapes set the path directly in the animation effect.
+  useEffect(() => {
+    if (usePathRendering) return undefined;
+    const update = () => {
+      const v = animVals.current;
+      const inner = roundedRectSubpath(v.x, v.y, v.w, v.h, v.rx);
+      setOverlayPathD(buildOverlayPath(inner));
+      // Keep the pulse border on the SAME state-driven path as the dark cutout.
+      // Previously the pulse used a native-animated <Rect> while the dark hole
+      // used this React-state path — the native rect outran the state update, so
+      // the highlight appeared to "move" while the cutout was left behind. Both
+      // now read from the same setState, so they can never drift apart.
+      setPathD(inner);
+    };
+    const ix = animX.addListener(({ value }) => {
+      animVals.current.x = value;
+      update();
+    });
+    const iy = animY.addListener(({ value }) => {
+      animVals.current.y = value;
+      update();
+    });
+    const iw = animWidth.addListener(({ value }) => {
+      animVals.current.w = value;
+      update();
+    });
+    const ih = animHeight.addListener(({ value }) => {
+      animVals.current.h = value;
+      update();
+    });
+    const ir = animRx.addListener(({ value }) => {
+      animVals.current.rx = value;
+      update();
+    });
+    return () => {
+      animX.removeListener(ix);
+      animY.removeListener(iy);
+      animWidth.removeListener(iw);
+      animHeight.removeListener(ih);
+      animRx.removeListener(ir);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usePathRendering, screenWidth, screenHeight, animX, animY, animWidth, animHeight, animRx]);
+
   // Animation effect
   useEffect(() => {
     if (!shapeResult) return;
@@ -150,6 +216,7 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
       animWidth.setValue(b.width);
       animHeight.setValue(b.height);
       setPathD(shapeResult.d);
+      setOverlayPathD(buildOverlayPath(shapeResult.d));
       hasAnimated.current = true;
       return;
     }
@@ -163,6 +230,23 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
       animHeight.setValue(shapeResult.height);
       animRx.setValue(shapeResult.rx);
       animRy.setValue(shapeResult.ry);
+      animVals.current = {
+        x: shapeResult.x,
+        y: shapeResult.y,
+        w: shapeResult.width,
+        h: shapeResult.height,
+        rx: shapeResult.rx,
+      };
+      const inner = roundedRectSubpath(
+        shapeResult.x,
+        shapeResult.y,
+        shapeResult.width,
+        shapeResult.height,
+        shapeResult.rx
+      );
+      setOverlayPathD(buildOverlayPath(inner));
+      // Same source as the dark hole — keeps the pulse border in lockstep.
+      setPathD(inner);
       hasAnimated.current = true;
       return;
     }
@@ -229,7 +313,20 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
     return () => loop.stop();
   }, [enablePulse, target, pulseDuration, pulseMinOpacity, pulseMaxOpacity, pulseOpacity]);
 
-  if (!target || !shapeResult || !bounds) return null;
+  // No target (centered / no-spotlight step): render a plain dimmed backdrop so
+  // the screen is still dimmed and the press handler stays available, instead of
+  // an invisible modal that traps the user. The tooltip renders above this.
+  if (!target || !shapeResult || !bounds) {
+    return (
+      <Pressable
+        style={[
+          StyleSheet.absoluteFill,
+          { backgroundColor: overlayColor, opacity: overlayOpacity },
+        ]}
+        onPress={onBackdropPress}
+      />
+    );
+  }
 
   // Resolve optional libraries (cached at module scope)
   const BlurView = enableBlur ? getBlurView() : null;
@@ -302,34 +399,28 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
           </MaskedView>
         ) : null}
 
-        {/* Main dark overlay with animated spotlight cutout */}
+        {/* Main dark overlay: full screen with the spotlight punched out as a
+            true hole via an even-odd path (Fabric-safe; no <Mask>). */}
         <Svg height={screenHeight} width={screenWidth} style={StyleSheet.absoluteFill}>
-          <Defs>
-            <Mask id={maskIds.spotlight}>
-              <Rect x="0" y="0" width={screenWidth} height={screenHeight} fill="white" />
-              {renderCutout('black')}
-            </Mask>
-          </Defs>
-          <Rect
-            x="0"
-            y="0"
-            width={screenWidth}
-            height={screenHeight}
+          <Path
+            d={overlayPathD}
             fill={overlayColor}
             fillOpacity={overlayOpacity}
-            mask={`url(#${maskIds.spotlight})`}
+            fillRule="evenodd"
           />
         </Svg>
       </Pressable>
 
-      {/* Pulse border overlay */}
+      {/* Pulse border overlay — driven by the SAME `pathD` state as the dark
+          cutout (set together in the same render), so the pulse outline and the
+          transparent hole always animate as one and never drift apart. */}
       {enablePulse ? (
         <Animated.View
           style={[StyleSheet.absoluteFill, { opacity: pulseOpacity }]}
           pointerEvents="none"
         >
           <Svg height={screenHeight} width={screenWidth}>
-            {renderCutout('none', pulseColor, pulseWidth)}
+            <Path d={pathD} fill="none" stroke={pulseColor} strokeWidth={pulseWidth} />
           </Svg>
         </Animated.View>
       ) : null}
