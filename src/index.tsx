@@ -14,7 +14,13 @@ export { darkTheme, lightTheme, minimalTheme, vibrantTheme, createTheme } from '
 export { computeShape } from './shapes';
 
 // Utility exports (useful for custom tooltip renderers)
-export { computeTooltipPosition, validateRef, extractBorderRadius } from './utils';
+export {
+  computeTooltipPosition,
+  validateRef,
+  extractBorderRadius,
+  resolveInsets,
+  resolveSafeAreaInsets,
+} from './utils';
 export { announceStep, getTooltipAccessibilityProps } from './accessibility';
 
 // Type exports
@@ -32,6 +38,7 @@ export type {
   TourTheme,
   MeasurableRef,
   ScrollableRef,
+  EdgeInsets,
 } from './types';
 
 export type { SpotlightBorderRadius, ShapeBounds, ShapeResult } from './shapes';
