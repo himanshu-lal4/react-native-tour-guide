@@ -2,12 +2,14 @@
 
 A lightweight React Native library for building app tours, walkthroughs, and coach marks. The spotlight automatically matches your component's shape — circles stay circular, pills stay pill-shaped, no manual configuration needed.
 
-Works with Expo, React Native CLI, and React Native Web. Zero native dependencies. New Architecture ready.
+Works with Expo and React Native CLI. Zero native dependencies. New Architecture ready.
 
 [![npm version](https://img.shields.io/npm/v/@wrack/react-native-tour-guide.svg?style=flat-square)](https://www.npmjs.com/package/@wrack/react-native-tour-guide)
 [![npm downloads](https://img.shields.io/npm/dm/@wrack/react-native-tour-guide.svg?style=flat-square)](https://www.npmjs.com/package/@wrack/react-native-tour-guide)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](https://github.com/himanshu-lal4/react-native-tour-guide/blob/main/LICENSE)
-[![platforms](https://img.shields.io/badge/platform-iOS%20%7C%20Android%20%7C%20Web-lightgrey.svg?style=flat-square)](https://github.com/himanshu-lal4/react-native-tour-guide)
+[![platforms](https://img.shields.io/badge/platform-iOS%20%7C%20Android-lightgrey.svg?style=flat-square)](https://github.com/himanshu-lal4/react-native-tour-guide)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/himanshu-lal4/react-native-tour-guide/blob/main/CONTRIBUTING.md)
+[![good first issues](https://img.shields.io/github/issues/himanshu-lal4/react-native-tour-guide/good%20first%20issue?style=flat-square&label=good%20first%20issues&color=7057ff)](https://github.com/himanshu-lal4/react-native-tour-guide/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
 
 <table>
   <tr>
@@ -42,7 +44,6 @@ It creates an overlay that highlights specific components in your app and shows 
 | Tour persistence | Built-in "show only once" hook | DIY |
 | Conditional steps | `active` flag with auto-renumbering | Filter manually |
 | Bundle size | < 50KB, zero native dependencies | > 200KB |
-| Web support | Full react-native-web support | Not supported |
 
 ---
 
@@ -475,18 +476,6 @@ const {
 
 ---
 
-## React Native Web
-
-Works out of the box with `react-native-web`. No additional configuration.
-
-```bash
-npm install @wrack/react-native-tour-guide react-native-svg react-native-web
-```
-
-Element measurement uses `getBoundingClientRect` on web. Blur and gradient effects gracefully degrade to the standard overlay since they require native modules.
-
----
-
 ## Troubleshooting
 
 **Tour not showing?**
@@ -518,13 +507,64 @@ Element measurement uses `getBoundingClientRect` on web. Blur and gradient effec
 
 ---
 
-## Contributing
+## Frequently asked questions
 
-- [Report bugs](https://github.com/himanshu-lal4/react-native-tour-guide/issues)
-- [Request features](https://github.com/himanshu-lal4/react-native-tour-guide/issues/new?template=feature_request.yml)
-- [Submit PRs](https://github.com/himanshu-lal4/react-native-tour-guide/pulls)
+### Does it work with Expo?
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup.
+Yes. It works with Expo (managed and bare) and React Native CLI. The only required dependency is `react-native-svg`, which Expo supports out of the box.
+
+### Does it support the New Architecture (Fabric)?
+
+Yes. The dark overlay is drawn with a single even-odd SVG path (a real punched-out hole) rather than an SVG `<Mask>`, so the spotlight renders correctly on both the old architecture and Fabric, with no white film over the highlighted element.
+
+### Does it work with `ScrollView`, `FlatList`, and `SectionList`?
+
+Yes. Pass a `scrollRef` (and a `getCurrentScrollOffset` getter) on the config and the tour scrolls off-screen targets into view automatically, keeping both the target and its tooltip on screen.
+
+### What are the dependencies and bundle size?
+
+The library itself is under 50KB and has **zero native dependencies** — only `react-native-svg` as a peer. Blur and gradient effects are fully optional and load lazily only if you install them, degrading gracefully to the standard overlay otherwise.
+
+### Is it written in TypeScript?
+
+Yes — it ships with full TypeScript types for every step option, config field, and theme.
+
+### How does it compare to react-native-copilot or rn-tourguide?
+
+All three highlight UI elements with tooltips. This library additionally matches the spotlight shape to each target's border radius automatically (circles, pills, per-corner radii), auto-scrolls so the target *and* tooltip both fit on screen, and ships zero native dependencies — so it runs in Expo Go without a custom dev build.
+
+### Can I show a tour only once per user?
+
+Yes — use the `useTourPersistence` hook with any storage backend (AsyncStorage, MMKV, or a custom adapter). See [How to show a tour only once?](#how-to-show-a-tour-only-once).
+
+---
+
+## Roadmap & help wanted
+
+Contributions are welcome — these are good places to start. Open an issue to claim one or propose your own:
+
+- `expo-blur` support so the blur overlay renders in Expo Go (today blur requires `@react-native-community/blur`)
+- A `renderOverlay` escape hatch for fully custom backdrops
+- Per-step tooltip theming (different tooltip styles per step)
+- More built-in themes and a theme gallery
+- Additional examples (drawer/tab navigators, modals, lists)
+- Docs, tests, and bug fixes of any size
+
+Browse [good first issues](https://github.com/himanshu-lal4/react-native-tour-guide/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) or [open a discussion](https://github.com/himanshu-lal4/react-native-tour-guide/discussions).
+
+---
+
+## Contributing & community
+
+Issues, ideas, and pull requests of every size are welcome — bug reports and docs improvements help just as much as features.
+
+- 🐛 [Report a bug](https://github.com/himanshu-lal4/react-native-tour-guide/issues/new?template=bug_report.yml)
+- 💡 [Request a feature](https://github.com/himanshu-lal4/react-native-tour-guide/issues/new?template=feature_request.yml)
+- 💬 [Ask a question / share an idea](https://github.com/himanshu-lal4/react-native-tour-guide/discussions)
+- 🔧 [Submit a pull request](https://github.com/himanshu-lal4/react-native-tour-guide/pulls)
+- ⭐ Star the repo to help others discover it
+
+New to the project? Read [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, the project structure, and the development workflow.
 
 ## License
 
