@@ -1,10 +1,16 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Dimensions, Modal, Platform, StatusBar, findNodeHandle } from 'react-native';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { Dimensions, Modal, Platform, findNodeHandle } from 'react-native';
 
 import { useTourGuide } from './TourGuideContext';
 import SpotlightOverlay from './SpotlightOverlay';
 import Tooltip from './Tooltip';
-import { validateRef, computeTooltipPosition, extractBorderRadius } from './utils';
+import {
+  validateRef,
+  computeTooltipPosition,
+  extractBorderRadius,
+  resolveInsets,
+  resolveSafeAreaInsets,
+} from './utils';
 import { announceStep } from './accessibility';
 import type { BackdropBehavior } from './types';
 
@@ -12,6 +18,15 @@ const isWeb = Platform.OS === 'web';
 
 const MAX_MEASURE_RETRIES = 3;
 const MEASURE_RETRY_DELAY = 100;
+
+// After a programmatic scroll, the animation finishes at an unpredictable time
+// (varies by distance/device/platform; iOS animated scrolls don't fire reliable
+// scroll-end events). So instead of measuring once after a fixed delay — which
+// captures the target mid-flight and leaves the spotlight/tooltip behind — we
+// poll until the measured position stops changing (settled) or we hit the cap.
+const SETTLE_POLL_INTERVAL = 80;
+const MAX_SETTLE_POLLS = 12; // ~960ms cap — covers long animated scrolls
+const SETTLE_EPSILON = 0.5; // px; two readings this close count as settled
 
 /**
  * Cross-platform measurement helper.
@@ -92,10 +107,51 @@ const TourGuideOverlay: React.FC = () => {
   );
   const currentStepData = activeSteps[currentStep];
 
+  // Resolve safe-area + extra insets once per config change. Keeps tooltips on
+  // screen and targets clear of the status bar / nav bar / tab bars.
+  const insets = useMemo(
+    () => resolveInsets({ insets: config?.insets, extraInsets: config?.extraInsets }),
+    [config?.insets, config?.extraInsets]
+  );
+
+  // On Android, measureInWindow returns coordinates relative to the app content
+  // area, which sits BELOW the status bar — but the overlay Modal is
+  // statusBarTranslucent and spans the full screen from y=0. So we add the
+  // (dp-correct) status-bar height to align the spotlight with the real element.
+  // iOS measureInWindow already uses full-screen coordinates, so no offset.
+  // NB: use the safe-area top only (not extraInsets) — a tab bar doesn't shift
+  // measureInWindow, and using raw StatusBar.currentHeight risks px-vs-dp bugs.
+  const measureTopOffset = useMemo(() => {
+    if (isWeb || Platform.OS !== 'android') return 0;
+    return resolveSafeAreaInsets({ insets: config?.insets }).top;
+  }, [config?.insets]);
+
   // Refs for cleanup
   const delayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const measureRetryCount = useRef(0);
+
+  // Monotonic step token: every step change bumps this. Async measurement
+  // callbacks compare against it and bail if they belong to a previous step,
+  // preventing stale layout from one step landing on another (measurement race).
+  const stepEpoch = useRef(0);
+  // Last screen-Y seen while polling for a programmatic scroll to settle. Reset
+  // to null at the start of each settle loop so the first reading is never
+  // mistaken for "settled" against a stale value from a previous step.
+  const lastSettleY = useRef<number | null>(null);
+  // Guards setState after unmount inside async measure callbacks.
+  const isMounted = useRef(true);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  // When a step has no measurable target (no ref, or measurement failed), we
+  // show a centered tooltip instead of leaving the user trapped behind a
+  // non-interactive backdrop with nothing to tap.
+  const [centeredFallback, setCenteredFallback] = useState(false);
 
   // --- Orientation change handling ---
   useEffect(() => {
@@ -113,8 +169,10 @@ const TourGuideOverlay: React.FC = () => {
     return () => subscription.remove();
   }, [isActive, currentStepData, setTargetLayout]);
 
-  // Estimated tooltip height for scroll calculations (title + description + buttons + padding)
-  const ESTIMATED_TOOLTIP_HEIGHT = 200;
+  // Estimated tooltip height for scroll calculations. Generous on purpose: a
+  // tooltip with progress dots + a long description + buttons can be ~280px, and
+  // under-reserving makes the tooltip overlap the target after an auto-scroll.
+  const ESTIMATED_TOOLTIP_HEIGHT = 260;
 
   // --- Resolve the effective scroll ref (per-step overrides global config) ---
   const getScrollRef = useCallback(() => {
@@ -131,7 +189,7 @@ const TourGuideOverlay: React.FC = () => {
 
   // --- Measure target with retry logic ---
   const measureTarget = useCallback(
-    (retryCount = 0) => {
+    (epoch: number, retryCount = 0) => {
       if (!currentStepData?.targetRef?.current) {
         // No target ref — show tooltip without spotlight
         setTargetLayout(null);
@@ -141,31 +199,87 @@ const TourGuideOverlay: React.FC = () => {
       measureElement(
         currentStepData.targetRef as { current: Record<string, unknown> },
         (x: number, y: number, width: number, height: number) => {
+          // Bail if the step changed or we unmounted while measuring async.
+          if (epoch !== stepEpoch.current || !isMounted.current) return;
+
           if (width > 0 && height > 0) {
-            const statusBarHeight =
-              !isWeb && Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0;
-            const adjustedY = y + statusBarHeight;
-            setTargetLayout({ x, y: adjustedY, width, height });
+            // Align with the full-screen overlay Modal (see measureTopOffset).
+            setTargetLayout({ x, y: y + measureTopOffset, width, height });
             measureRetryCount.current = 0;
           } else if (retryCount < MAX_MEASURE_RETRIES) {
             // Element not laid out yet — retry
-            setTimeout(() => measureTarget(retryCount + 1), MEASURE_RETRY_DELAY);
+            setTimeout(() => measureTarget(epoch, retryCount + 1), MEASURE_RETRY_DELAY);
           } else {
             console.warn(
-              `react-native-tour-guide: Step "${currentStepData.id}" target measured as 0x0 after ${MAX_MEASURE_RETRIES} retries.`
+              `react-native-tour-guide: Step "${currentStepData.id}" target measured as 0x0 after ${MAX_MEASURE_RETRIES} retries. Showing a centered tooltip instead.`
             );
             measureRetryCount.current = 0;
+            // Don't trap the user — fall back to a centered, dismissible tooltip.
+            setCenteredFallback(true);
           }
         }
       );
     },
-    [currentStepData, setTargetLayout]
+    [currentStepData, setTargetLayout, measureTopOffset]
+  );
+
+  // --- Measure after a scroll, polling until the scroll settles ---
+  // The highlight is hidden (targetLayout=null) while the programmatic scroll
+  // animates. We poll the target position WITHOUT committing it until two
+  // consecutive readings agree (the scroll has stopped), then reveal the
+  // spotlight ONCE at its final position. Committing intermediate readings would
+  // make the cutout chase the moving target and flicker; waiting for settle also
+  // prevents latching onto a mid-animation position (the "left behind" bug).
+  const measureUntilSettled = useCallback(
+    (epoch: number, attempt = 0) => {
+      if (!currentStepData?.targetRef?.current) {
+        setTargetLayout(null);
+        return;
+      }
+
+      measureElement(
+        currentStepData.targetRef as { current: Record<string, unknown> },
+        (x: number, y: number, width: number, height: number) => {
+          // Bail if the step changed or we unmounted while measuring async.
+          if (epoch !== stepEpoch.current || !isMounted.current) return;
+
+          if (width > 0 && height > 0) {
+            // Align with the full-screen overlay Modal (see measureTopOffset).
+            const adjustedY = y + measureTopOffset;
+            const prev = lastSettleY.current;
+            lastSettleY.current = adjustedY;
+            const settled = prev !== null && Math.abs(adjustedY - prev) < SETTLE_EPSILON;
+
+            if (settled || attempt >= MAX_SETTLE_POLLS) {
+              // Scroll has come to rest — reveal the highlight at its final spot.
+              setTargetLayout({ x, y: adjustedY, width, height });
+              measureRetryCount.current = 0;
+            } else {
+              // Still moving — keep polling without showing anything yet.
+              setTimeout(() => measureUntilSettled(epoch, attempt + 1), SETTLE_POLL_INTERVAL);
+            }
+          } else if (attempt < MAX_SETTLE_POLLS) {
+            // Element not laid out yet — keep trying.
+            setTimeout(() => measureUntilSettled(epoch, attempt + 1), SETTLE_POLL_INTERVAL);
+          } else {
+            console.warn(
+              `react-native-tour-guide: Step "${currentStepData.id}" target measured as 0x0 after scrolling. Showing a centered tooltip instead.`
+            );
+            measureRetryCount.current = 0;
+            // Don't trap the user — fall back to a centered, dismissible tooltip.
+            setCenteredFallback(true);
+          }
+        }
+      );
+    },
+    [currentStepData, setTargetLayout, measureTopOffset]
   );
 
   // --- Scroll to target logic ---
   // Ensures both the target AND tooltip are fully visible in the viewport.
   // If they don't fit, auto-scrolls the parent ScrollView.
-  const scrollAndMeasure = useCallback(() => {
+  const scrollAndMeasure = useCallback(
+    (epoch: number) => {
     const scrollRef = getScrollRef();
     const stepScrollConfig = currentStepData?.scrollToTarget;
 
@@ -173,14 +287,18 @@ const TourGuideOverlay: React.FC = () => {
     if (stepScrollConfig?.absolute && scrollRef?.current) {
       const offset = stepScrollConfig.offset ?? 0;
       const animated = stepScrollConfig.animated ?? true;
+      // Hide the highlight while we scroll, then reveal it once settled — this
+      // is what stops the spotlight flickering/chasing during the scroll.
+      setTargetLayout(null);
       scrollRef.current.scrollTo({ y: Math.max(0, offset), animated });
-      setTimeout(() => measureTarget(), animated ? 400 : 100);
+      lastSettleY.current = null;
+      setTimeout(() => measureUntilSettled(epoch), animated ? 100 : 50);
       return;
     }
 
     // No target to measure
     if (!currentStepData?.targetRef?.current) {
-      measureTarget();
+      measureTarget(epoch);
       return;
     }
 
@@ -188,20 +306,22 @@ const TourGuideOverlay: React.FC = () => {
     measureElement(
       currentStepData.targetRef as { current: Record<string, unknown> },
       (_: number, y: number, width: number, height: number) => {
+        // Bail if the step changed or we unmounted while measuring async.
+        if (epoch !== stepEpoch.current || !isMounted.current) return;
+
         if (width <= 0 || height <= 0) {
-          measureTarget();
+          measureTarget(epoch);
           return;
         }
 
         // If no scroll ref available, just measure and render
         if (!scrollRef?.current) {
-          measureTarget();
+          measureTarget(epoch);
           return;
         }
 
-        const statusBarHeight =
-          !isWeb && Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0;
-        const adjustedY = y + statusBarHeight;
+        // Align with the full-screen overlay Modal (see measureTopOffset).
+        const adjustedY = y + measureTopOffset;
         const animated = stepScrollConfig?.animated ?? true;
         const extraOffset = stepScrollConfig?.offset ?? 0;
         const currentScrollOffset = getScrollOffset();
@@ -216,9 +336,10 @@ const TourGuideOverlay: React.FC = () => {
         const targetBottom = adjustedY + height;
         const sh = screenDimensions.height;
 
-        // Margins: top needs room for status bar, bottom needs generous room
-        const topMargin = 80;
-        const bottomMargin = 40;
+        // Margins keep the target clear of system chrome: the status bar/notch
+        // at the top and the nav bar / home indicator / tab bar at the bottom.
+        const topMargin = insets.top + 24;
+        const bottomMargin = insets.bottom + 24;
 
         // Space available above and below the target for the tooltip
         const spaceAbove = targetTop - topMargin;
@@ -232,7 +353,7 @@ const TourGuideOverlay: React.FC = () => {
 
         if (targetFullyVisible && tooltipFits) {
           // Everything fits — no scroll needed
-          measureTarget();
+          measureTarget(epoch);
           return;
         }
 
@@ -263,18 +384,27 @@ const TourGuideOverlay: React.FC = () => {
         const scrollDelta = targetTop - idealTargetScreenY;
         const scrollToY = currentScrollOffset + scrollDelta + extraOffset;
 
+        // Hide the highlight while we scroll, then reveal it once settled at the
+        // target's new position — no flicker, no chasing the moving target.
+        setTargetLayout(null);
         scrollRef.current.scrollTo({ y: Math.max(0, scrollToY), animated });
-        setTimeout(() => measureTarget(), animated ? 400 : 100);
+        lastSettleY.current = null;
+        setTimeout(() => measureUntilSettled(epoch), animated ? 100 : 50);
       }
     );
-  }, [
-    currentStepData,
-    measureTarget,
-    getScrollRef,
-    getScrollOffset,
-    screenDimensions.height,
-    config,
-  ]);
+    },
+    [
+      currentStepData,
+      measureTarget,
+      measureUntilSettled,
+      getScrollRef,
+      getScrollOffset,
+      screenDimensions.height,
+      config,
+      insets,
+      measureTopOffset,
+    ]
+  );
 
   // --- Main effect: step changes ---
   useEffect(() => {
@@ -290,15 +420,21 @@ const TourGuideOverlay: React.FC = () => {
 
     if (!isActive || isPaused || !currentStepData) return undefined;
 
+    // New step → bump the epoch so any in-flight measurement from the previous
+    // step is ignored, and clear the centered fallback from the previous step.
+    const epoch = ++stepEpoch.current;
+    setCenteredFallback(false);
+
     // Validate ref
     const hasValidRef = validateRef(currentStepData.targetRef, currentStepData.id);
 
     const startMeasurement = () => {
       if (hasValidRef) {
-        scrollAndMeasure();
+        scrollAndMeasure(epoch);
       } else {
-        // No valid ref — show tooltip without spotlight (centered)
+        // No valid ref — show a centered tooltip without spotlight.
         setTargetLayout(null);
+        setCenteredFallback(true);
       }
     };
 
@@ -379,6 +515,7 @@ const TourGuideOverlay: React.FC = () => {
           tooltipWidth: config?.tooltipWidth ?? 320,
           tooltipHeight: 150,
           offset: (config?.tooltipOffset ?? 8) + (config?.triangleSize ?? 12),
+          insets,
         });
 
         // If user explicitly chose a position (not 'auto'), prefer it if it fits
@@ -389,16 +526,20 @@ const TourGuideOverlay: React.FC = () => {
             switch (preferred) {
               case 'bottom':
                 return (
-                  screenDimensions.height - (targetLayout.y + targetLayout.height + offset) >=
+                  screenDimensions.height -
+                    insets.bottom -
+                    (targetLayout.y + targetLayout.height + offset) >=
                   tooltipHeight
                 );
               case 'top':
-                return targetLayout.y - offset >= tooltipHeight;
+                return targetLayout.y - offset - insets.top >= tooltipHeight;
               case 'left':
-                return targetLayout.x - offset >= (config?.tooltipWidth ?? 320) * 0.6;
+                return targetLayout.x - offset - insets.left >= (config?.tooltipWidth ?? 320) * 0.6;
               case 'right':
                 return (
-                  screenDimensions.width - (targetLayout.x + targetLayout.width + offset) >=
+                  screenDimensions.width -
+                    insets.right -
+                    (targetLayout.x + targetLayout.width + offset) >=
                   (config?.tooltipWidth ?? 320) * 0.6
                 );
               default:
@@ -421,7 +562,11 @@ const TourGuideOverlay: React.FC = () => {
     description: currentStepData.description,
     position: targetLayout
       ? { x: targetLayout.x, y: targetLayout.y }
-      : { x: screenDimensions.width / 2, y: screenDimensions.height / 2 },
+      : {
+          // Centered (no-target) step: center within the safe area.
+          x: screenDimensions.width / 2,
+          y: (insets.top + (screenDimensions.height - insets.bottom)) / 2,
+        },
     tooltipPosition: resolvedTooltipPosition,
     currentStep,
     totalSteps: activeSteps.length,
@@ -436,11 +581,15 @@ const TourGuideOverlay: React.FC = () => {
     hideSkipButton: currentStepData.hideSkipButton,
     screenWidth: screenDimensions.width,
     screenHeight: screenDimensions.height,
+    insets,
   };
 
   // --- Resolve border radius: explicit > extracted from targetStyle > default ---
+  // Pass the measured target so percentage radii (e.g. '50%') resolve to a real
+  // pixel radius — this is what keeps circular targets round instead of square.
   const effectiveBorderRadius =
-    currentStepData.spotlightBorderRadius ?? extractBorderRadius(currentStepData.targetStyle);
+    currentStepData.spotlightBorderRadius ??
+    extractBorderRadius(currentStepData.targetStyle, targetLayout ?? undefined);
 
   // --- Shared spotlight props ---
   const spotlightProps = {
@@ -455,8 +604,13 @@ const TourGuideOverlay: React.FC = () => {
     onSpotlightPress: currentStepData.onSpotlightPress,
   };
 
+  // Show the tooltip once the target is measured, or immediately for a
+  // centered/no-target step. This is what prevents the user from being trapped
+  // behind a backdrop with no tooltip to interact with.
+  const showTooltip = Boolean(targetLayout) || centeredFallback;
+
   // Custom tooltip renderer
-  if (config?.renderTooltip && targetLayout) {
+  if (config?.renderTooltip && showTooltip) {
     return (
       <Modal
         visible={isActive}
@@ -480,7 +634,7 @@ const TourGuideOverlay: React.FC = () => {
       onRequestClose={skipTour}
     >
       <SpotlightOverlay {...spotlightProps} />
-      {targetLayout ? <Tooltip {...tooltipProps} /> : null}
+      {showTooltip ? <Tooltip {...tooltipProps} /> : null}
     </Modal>
   );
 };

@@ -26,6 +26,19 @@ export interface SpotlightTarget {
 }
 
 /**
+ * Edge insets (in px) describing regions the tour should stay clear of:
+ * the status bar / notch (top), the home indicator or Android navigation bar
+ * (bottom), and any side insets. Used to keep tooltips on-screen and to scroll
+ * targets out from behind system chrome.
+ */
+export interface EdgeInsets {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+/**
  * Configuration for automatic scrolling to a target
  */
 export interface ScrollToTargetConfig {
@@ -215,6 +228,31 @@ export interface TourGuideConfig {
   /** Called before step changes. Return false (or resolve false) to prevent the transition. */
   beforeStepChange?: (fromIndex: number, toIndex: number) => boolean | Promise<boolean>;
 
+  // --- Safe-area / layout insets ---
+
+  /**
+   * Safe-area insets to respect (status bar, notch, Android nav bar, home
+   * indicator). Tooltips are clamped within these and targets are scrolled out
+   * from behind them. If omitted, insets are auto-detected from
+   * react-native-safe-area-context (when installed) or fall back to the Android
+   * status-bar height. Provide partial values to override specific edges.
+   *
+   * @example
+   * const insets = useSafeAreaInsets();
+   * startTour(steps, { insets });
+   */
+  insets?: Partial<EdgeInsets>;
+  /**
+   * Extra insets ADDED on top of the safe area for app chrome that overlaps the
+   * content — e.g. a bottom tab bar, a top tab bar, or a custom header. The tour
+   * keeps tooltips and targets clear of these too.
+   *
+   * @example
+   * // 56px bottom tab bar + 48px top tabs, on top of the safe area
+   * startTour(steps, { insets, extraInsets: { top: 48, bottom: 56 } });
+   */
+  extraInsets?: Partial<EdgeInsets>;
+
   // --- Configurable layout values ---
 
   /** Default backdrop behavior for all steps (default: 'none') */
@@ -271,6 +309,8 @@ export interface TooltipProps {
   hideSkipButton?: boolean;
   screenWidth?: number;
   screenHeight?: number;
+  /** Resolved safe-area + extra insets the tooltip must stay within */
+  insets?: EdgeInsets;
 }
 
 /**
