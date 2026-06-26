@@ -541,14 +541,13 @@ Yes — use the `useTourPersistence` hook with any storage backend (AsyncStorage
 
 ## Roadmap & help wanted
 
-Contributions are welcome — these are good places to start. Open an issue to claim one or propose your own:
+Contributions are welcome — issues and pull requests of any size help. Good places to start:
 
-- `expo-blur` support so the blur overlay renders in Expo Go (today blur requires `@react-native-community/blur`)
-- A `renderOverlay` escape hatch for fully custom backdrops
-- Per-step tooltip theming (different tooltip styles per step)
-- More built-in themes and a theme gallery
+- New features and enhancements
+- More built-in themes
 - Additional examples (drawer/tab navigators, modals, lists)
-- Docs, tests, and bug fixes of any size
+- Documentation improvements and tests
+- Bug fixes of any size
 
 Browse [good first issues](https://github.com/himanshu-lal4/react-native-tour-guide/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) or [open a discussion](https://github.com/himanshu-lal4/react-native-tour-guide/discussions).
 
