@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-06-27
+
+### Changed
+
+- README: show explicit install commands for npm, yarn, pnpm, and Expo.
+
+### Removed
+
+- GitHub release workflow (`.github/workflows/release.yml`); releases are now published manually with `npm publish`.
+
+---
+
 ## [1.0.0] - 2026-06-27
 
 First stable release — a production-ready tour-guide toolkit for React Native with auto shape-matching spotlights, smart auto-scroll, theming, accessibility, and a declarative API.
@@ -90,5 +102,6 @@ First stable release — a production-ready tour-guide toolkit for React Native 
 
 ---
 
+[1.0.1]: https://github.com/himanshu-lal4/react-native-tour-guide/releases/tag/v1.0.1
 [1.0.0]: https://github.com/himanshu-lal4/react-native-tour-guide/releases/tag/v1.0.0
 [0.1.0]: https://github.com/himanshu-lal4/react-native-tour-guide/releases/tag/v0.1.0
