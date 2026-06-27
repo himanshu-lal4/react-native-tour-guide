@@ -1,7 +1,7 @@
 {
   "name": "@wrack/react-native-tour-guide",
-  "version": "0.1.4",
-  "description": "Integrate a powerful and customizable React Native app tour guide/walkthrough and coach marks in less then 1 minute. Packed with advanced features like SVG masking, smooth animations, fully customizable tooltips, automatic scrolling, light/dark mode support, and a declarative API. The ultimate toolkit for creating engaging app tour.",
+  "version": "1.0.0",
+  "description": "React Native tour guide, walkthrough, and coach marks library. Auto shape-matching spotlight, smart auto-scroll, themeable tooltips, pulse animation, and a declarative API. Works with Expo and React Native CLI — zero native dependencies, TypeScript, New Architecture ready.",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
   "exports": {
@@ -13,6 +13,7 @@
     "./package.json": "./package.json"
   },
   "files": [
+    "llms.txt",
     "src",
     "lib",
     "android",
