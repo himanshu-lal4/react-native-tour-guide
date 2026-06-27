@@ -50,15 +50,18 @@ It creates an overlay that highlights specific components in your app and shows 
 ## Installation
 
 ```bash
+# npm
 npm install @wrack/react-native-tour-guide react-native-svg
-```
 
-Or with Expo:
-```bash
+# yarn
+yarn add @wrack/react-native-tour-guide react-native-svg
+
+# pnpm
+pnpm add @wrack/react-native-tour-guide react-native-svg
+
+# Expo (managed or bare)
 npx expo install @wrack/react-native-tour-guide react-native-svg
 ```
-
-Also works with `yarn add` and `pnpm add`.
 
 ### Optional dependencies
 
