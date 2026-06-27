@@ -617,6 +617,7 @@ const TourGuideOverlay: React.FC = () => {
         transparent
         animationType="fade"
         statusBarTranslucent
+        navigationBarTranslucent
         onRequestClose={skipTour}
       >
         <SpotlightOverlay {...spotlightProps} />
