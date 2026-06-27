@@ -63,12 +63,6 @@ function AppContent() {
 
   const mainBtnRef = useRef(null);
 
-  // Theme showcase
-  const darkCardRef = useRef(null);
-  const lightCardRef = useRef(null);
-  const minimalCardRef = useRef(null);
-  const vibrantCardRef = useRef(null);
-
   // Shape matching demo
   const roundedBtnRef = useRef(null);
   const circleRef = useRef(null);
@@ -180,40 +174,6 @@ function AppContent() {
         description:
           'This self-playing tour walks through every feature of the library. Sit back and watch.',
         targetStyle: styles.startBtn,
-        autoAdvance: pace(),
-      },
-
-      // --- Themes ---
-      {
-        id: 'dark',
-        targetRef: darkCardRef,
-        title: '🌙 Dark Theme',
-        description: 'Rich dark backgrounds with high-contrast text. Great for dark-mode apps.',
-        targetStyle: styles.themeCard,
-        autoAdvance: pace(),
-      },
-      {
-        id: 'light',
-        targetRef: lightCardRef,
-        title: '☀️ Light Theme',
-        description: 'Clean white tooltip with a subtle overlay. Perfect for light mode.',
-        targetStyle: styles.themeCard,
-        autoAdvance: pace(),
-      },
-      {
-        id: 'minimal',
-        targetRef: minimalCardRef,
-        title: '⬜ Minimal Theme',
-        description: 'Understated styling with a lower overlay opacity. Keeps focus on content.',
-        targetStyle: styles.themeCard,
-        autoAdvance: pace(),
-      },
-      {
-        id: 'vibrant',
-        targetRef: vibrantCardRef,
-        title: '🎨 Vibrant Theme',
-        description: 'Bold colors for energetic experiences. Plus createTheme() for your brand.',
-        targetStyle: styles.themeCard,
         autoAdvance: pace(),
       },
 
@@ -330,7 +290,7 @@ function AppContent() {
       {
         id: 'finish',
         title: '🎉 You’ve seen it all!',
-        description: 'Themes, shape matching, pulse, backdrops, auto-advance, and smart scrolling.',
+        description: 'Shape matching, pulse, backdrops, auto-advance, and smart scrolling.',
       },
     ];
 
@@ -404,35 +364,6 @@ function AppContent() {
               Step {currentStep + 1} of {activeSteps.length}
             </Text>
           )}
-
-          {/* ─── Theme Cards ─────────────────────────────────────────────── */}
-          <Text style={styles.sectionTitle}>Theme Presets</Text>
-          <View style={styles.themeGrid}>
-            <View ref={darkCardRef} style={[styles.themeCard, { backgroundColor: '#2C2C2E' }]}>
-              <Text style={[styles.themeLabel, { color: '#FFF' }]}>Dark</Text>
-            </View>
-            <View
-              ref={lightCardRef}
-              style={[
-                styles.themeCard,
-                { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E0E0E0' },
-              ]}
-            >
-              <Text style={[styles.themeLabel, { color: '#1C1C1E' }]}>Light</Text>
-            </View>
-            <View
-              ref={minimalCardRef}
-              style={[
-                styles.themeCard,
-                { backgroundColor: '#FAFAFA', borderWidth: 1, borderColor: '#EEE' },
-              ]}
-            >
-              <Text style={[styles.themeLabel, { color: '#555' }]}>Minimal</Text>
-            </View>
-            <View ref={vibrantCardRef} style={[styles.themeCard, { backgroundColor: '#1A1A2E' }]}>
-              <Text style={[styles.themeLabel, { color: '#E94560' }]}>Vibrant</Text>
-            </View>
-          </View>
 
           {/* ─── Shape Matching Demo ─────────────────────────────────────── */}
           <Text style={styles.sectionTitle}>Auto Shape Matching</Text>

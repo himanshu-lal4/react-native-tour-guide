@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View, Animated, Pressable } from 'react-native';
+import { StyleSheet, View, Animated, Pressable, Dimensions } from 'react-native';
 import Svg, { Rect, Path, Defs, Mask } from 'react-native-svg';
 
 import type { SpotlightTarget, SpotlightStyles } from './types';
@@ -156,8 +156,18 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
     );
   };
 
+  // The overlay Modal is statusBarTranslucent / edge-to-edge, so it spans the
+  // full PHYSICAL screen — but `screenWidth`/`screenHeight` come from
+  // Dimensions.get('window'), which on Android excludes the status/navigation
+  // bars. Sizing the dark backdrop to the window left an undimmed strip at the
+  // bottom (under the nav bar). Cover the full screen instead; over-drawing past
+  // the Modal bounds is harmless (clipped). iOS: window == screen, so no change.
+  const physicalScreen = Dimensions.get('screen');
+  const coverWidth = Math.max(screenWidth, physicalScreen.width);
+  const coverHeight = Math.max(screenHeight, physicalScreen.height);
+
   const buildOverlayPath = (innerSubpath: string) =>
-    `M0,0 H${screenWidth} V${screenHeight} H0 Z ${innerSubpath}`;
+    `M0,0 H${coverWidth} V${coverHeight} H0 Z ${innerSubpath}`;
 
   // Keep the overlay path in sync with the animated spotlight (rect shapes).
   // Per-corner (path) shapes set the path directly in the animation effect.
@@ -364,18 +374,18 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
           <MaskedView
             style={StyleSheet.absoluteFill}
             maskElement={
-              <Svg height={screenHeight} width={screenWidth}>
+              <Svg height={coverHeight} width={coverWidth}>
                 <Defs>
                   <Mask id={maskIds.inverse}>
-                    <Rect x="0" y="0" width={screenWidth} height={screenHeight} fill="white" />
+                    <Rect x="0" y="0" width={coverWidth} height={coverHeight} fill="white" />
                     {renderCutout('black')}
                   </Mask>
                 </Defs>
                 <Rect
                   x="0"
                   y="0"
-                  width={screenWidth}
-                  height={screenHeight}
+                  width={coverWidth}
+                  height={coverHeight}
                   fill="black"
                   mask={`url(#${maskIds.inverse})`}
                 />
@@ -400,8 +410,10 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
         ) : null}
 
         {/* Main dark overlay: full screen with the spotlight punched out as a
-            true hole via an even-odd path (Fabric-safe; no <Mask>). */}
-        <Svg height={screenHeight} width={screenWidth} style={StyleSheet.absoluteFill}>
+            true hole via an even-odd path (Fabric-safe; no <Mask>). Sized to the
+            physical screen so it covers the whole Modal (incl. the Android
+            nav-bar area), not just the window. */}
+        <Svg height={coverHeight} width={coverWidth} style={StyleSheet.absoluteFill}>
           <Path
             d={overlayPathD}
             fill={overlayColor}
@@ -419,7 +431,7 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
           style={[StyleSheet.absoluteFill, { opacity: pulseOpacity }]}
           pointerEvents="none"
         >
-          <Svg height={screenHeight} width={screenWidth}>
+          <Svg height={coverHeight} width={coverWidth}>
             <Path d={pathD} fill="none" stroke={pulseColor} strokeWidth={pulseWidth} />
           </Svg>
         </Animated.View>
