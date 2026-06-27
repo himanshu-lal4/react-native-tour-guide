@@ -509,6 +509,18 @@ const {
 
 ## Frequently asked questions
 
+### How do I add an onboarding tour to a React Native app?
+
+Install `@wrack/react-native-tour-guide` and `react-native-svg`, wrap your app in `TourGuideProvider` with a `TourGuideOverlay`, then call `startTour(steps)` from the `useTourGuide()` hook. Each step references the component to highlight (via a `ref`) and the title/description to show. See [Quick start](#quick-start).
+
+### How do I highlight a specific component with a spotlight?
+
+Attach a `ref` to the component and pass it as `targetRef` on a step. The library measures the component, dims the rest of the screen, and cuts out a spotlight that matches the component's border radius automatically. Pass the component's style as `targetStyle` so the spotlight matches its shape.
+
+### Can I fully customize the tooltip?
+
+Yes. Use `config.tooltipStyles` to restyle the built-in tooltip, or pass `config.renderTooltip` to render your own component — it receives the title, description, step index, and `onNext`/`onPrev`/`onSkip` handlers. See [How to use a custom tooltip?](#how-to-use-a-custom-tooltip).
+
 ### Does it work with Expo?
 
 Yes. It works with Expo (managed and bare) and React Native CLI. The only required dependency is `react-native-svg`, which Expo supports out of the box.
