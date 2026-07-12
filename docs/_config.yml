@@ -1,0 +1,43 @@
+# GitHub Pages (Jekyll) config — zero build step, native GH Pages support.
+# Enable at: repo Settings → Pages → Source: Deploy from a branch → main / docs
+
+title: React Native Tour Guide
+tagline: Spotlight tours, walkthroughs & coach marks for React Native
+description: >-
+  A lightweight React Native library for app tours, walkthroughs, onboarding
+  flows, and coach marks. Auto shape-matching spotlight, smart auto-scroll,
+  themeable tooltips. Works with Expo and React Native CLI — zero native
+  dependencies, TypeScript, New Architecture ready.
+
+# IMPORTANT: set this to your published GitHub Pages URL once live.
+url: "https://himanshu-lal4.github.io"
+baseurl: "/react-native-tour-guide"
+
+author: Himanshu Lal
+lang: en_US
+
+theme: minima
+
+plugins:
+  - jekyll-seo-tag      # emits <title>, meta description, Open Graph, Twitter cards, JSON-LD
+  - jekyll-sitemap      # auto-generates /sitemap.xml for crawlers & answer engines
+
+# Surfaced by jekyll-seo-tag into social/OG cards
+logo: https://raw.githubusercontent.com/himanshu-lal4/react-native-tour-guide/main/IOSDemo.gif
+twitter:
+  card: summary_large_image
+
+# Repo/npm links used across pages
+repo_url: https://github.com/himanshu-lal4/react-native-tour-guide
+npm_url: https://www.npmjs.com/package/@wrack/react-native-tour-guide
+
+header_pages:
+  - getting-started.md
+  - react-native-app-tour.md
+  - react-native-copilot-alternative.md
+  - faq.md
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - vendor
