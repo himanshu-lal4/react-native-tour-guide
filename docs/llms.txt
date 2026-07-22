@@ -1,0 +1,53 @@
+# @wrack/react-native-tour-guide
+
+> A lightweight React Native library for building in-app tours, walkthroughs, onboarding flows, and coach marks. Its spotlight automatically matches each highlighted component's shape (circles stay circular, pills stay pill-shaped, per-corner radii are preserved) with no manual configuration. Works with Expo and React Native CLI, has zero native dependencies (only `react-native-svg`), is written in TypeScript, and is New Architecture (Fabric) ready.
+
+## What it does
+
+You define a list of steps — which component to highlight (via a ref) and what text to show — then call `startTour(steps, config)`. The library measures each target, dims the rest of the screen with a spotlight cutout, positions a tooltip, auto-scrolls off-screen targets into view, and animates between steps.
+
+## Key features
+
+- Auto shape matching: the spotlight reads `borderRadius` from the target's style and matches it (uniform, per-corner, fully-rounded/pill, and circle).
+- Smart auto-scroll: scrolls a parent `ScrollView`/`FlatList` so the target and its tooltip are both fully visible; the highlight is hidden during the scroll and revealed once it settles (no flicker).
+- Smart tooltip positioning: auto-detects the best side (top/bottom/left/right) and clamps within safe-area insets so it never renders off-screen.
+- Theming: built-in themes plus a `createTheme()` API; fully customizable tooltip via `renderTooltip`.
+- Pulse animation, backdrop-tap behavior, conditional steps, pause/resume, auto-advance, and "show only once" persistence (`useTourPersistence`).
+- Accessibility: screen-reader announcements (VoiceOver/TalkBack) enabled by default.
+
+## Installation
+
+```bash
+npm install @wrack/react-native-tour-guide react-native-svg
+# Expo: npx expo install @wrack/react-native-tour-guide react-native-svg
+```
+
+## Minimal usage
+
+```tsx
+import { TourGuideProvider, TourGuideOverlay, useTourGuide } from '@wrack/react-native-tour-guide';
+
+// Wrap the app once:
+<TourGuideProvider><App /><TourGuideOverlay /></TourGuideProvider>
+
+// Start a tour:
+const { startTour } = useTourGuide();
+startTour([{ id: 'welcome', targetRef: buttonRef, title: 'Welcome', description: 'Tap here.' }]);
+```
+
+## Platforms and dependencies
+
+- Platforms: iOS and Android (Expo and React Native CLI).
+- Required peer dependency: `react-native-svg`.
+- No native modules of its own; the dark overlay uses an even-odd SVG path (Fabric-safe).
+- Optional, lazily loaded effects: `@react-native-community/blur` (blur), `react-native-linear-gradient` (gradient).
+
+## Links
+
+- npm: https://www.npmjs.com/package/@wrack/react-native-tour-guide
+- Repository: https://github.com/himanshu-lal4/react-native-tour-guide
+- README: https://github.com/himanshu-lal4/react-native-tour-guide#readme
+
+## Comparison
+
+Similar libraries include react-native-copilot and rn-tourguide. This library differs by matching the spotlight shape to each target's border radius automatically, auto-scrolling so the target and tooltip both fit on screen, and shipping zero native dependencies (it runs in Expo Go without a custom dev build).
