@@ -112,7 +112,7 @@
   "bugs": {
     "url": "https://github.com/himanshu-lal4/react-native-tour-guide/issues"
   },
-  "homepage": "https://github.com/himanshu-lal4/react-native-tour-guide#readme",
+  "homepage": "https://himanshu-lal4.github.io/react-native-tour-guide/",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
