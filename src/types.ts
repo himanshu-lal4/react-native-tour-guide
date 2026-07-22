@@ -77,7 +77,7 @@ export interface TourStep {
   description: string;
   /** Position of the tooltip relative to the target (default: 'bottom', use 'auto' for smart positioning) */
   tooltipPosition?: 'top' | 'bottom' | 'left' | 'right' | 'auto';
-  /** Custom padding around spotlight in pixels (default: 8) */
+  /** Custom padding around spotlight in pixels (default: 0) */
   spotlightPadding?: number;
   /** Uniform border radius override for the spotlight (default: 12). For per-corner control, use targetStyle instead. */
   spotlightBorderRadius?: number;
