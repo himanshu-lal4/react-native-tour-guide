@@ -149,7 +149,7 @@ Rough mapping:
 | `shape` / `borderRadius` props | `targetStyle` (auto), or `spotlightBorderRadius` |
 | `start()` / `stop()` | `startTour(steps, config)` / `endTour()` |
 | `eventEmitter.on('stepChange')` | `onStepChange(from, to)` in the config |
-| `labels={{ skip, previous, next, finish }}` | `skipButtonText`, `prevButtonText`, `nextButtonText`, `doneButtonText` |
+| {% raw %}`labels={{ skip, previous, next, finish }}`{% endraw %} | `skipButtonText`, `prevButtonText`, `nextButtonText`, `doneButtonText` |
 | `tooltipComponent` | `renderTooltip` |
 | `backdropColor` | `spotlightStyles.overlayColor` / `overlayOpacity` |
 
