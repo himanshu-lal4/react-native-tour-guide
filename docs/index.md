@@ -28,9 +28,20 @@ npx expo install @wrack/react-native-tour-guide react-native-svg
 
 - [Getting started]({{ '/getting-started/' | relative_url }})
 - [How to build a React Native app tour]({{ '/react-native-app-tour/' | relative_url }})
-- [react-native-copilot alternative]({{ '/react-native-copilot-alternative/' | relative_url }})
+- [React Native walkthrough guide]({{ '/react-native-walkthrough/' | relative_url }})
+- [Coach marks & feature discovery]({{ '/react-native-coach-marks/' | relative_url }})
+- [User onboarding tutorial]({{ '/react-native-onboarding-tutorial/' | relative_url }})
+- [Expo onboarding tour (Expo Go compatible)]({{ '/expo-onboarding-tour/' | relative_url }})
 - [FAQ]({{ '/faq/' | relative_url }})
-- [GitHub repo]({{ site.repo_url }}) · [npm]({{ site.npm_url }})
+
+**Comparisons**
+
+- [react-native-copilot alternative]({{ '/react-native-copilot-alternative/' | relative_url }})
+- [rn-tourguide alternative]({{ '/rn-tourguide-alternative/' | relative_url }})
+
+**Install & source**
+
+- 📦 [Install from npm]({{ site.npm_url }}) · ⭐ [Star on GitHub]({{ site.repo_url }})
 
 ---
 

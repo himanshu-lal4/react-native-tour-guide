@@ -37,9 +37,16 @@ webmaster_verifications:
 repo_url: https://github.com/himanshu-lal4/react-native-tour-guide
 npm_url: https://www.npmjs.com/package/@wrack/react-native-tour-guide
 
+# Drives the npm CTA bar + footer CTA rendered on every page by _layouts/default.html
+npm_install: "npm install @wrack/react-native-tour-guide react-native-svg"
+npm_badge_slug: "%40wrack%2Freact-native-tour-guide"   # URL-encoded for shields.io
+github_slug: "himanshu-lal4/react-native-tour-guide"
+
 header_pages:
   - getting-started.md
   - react-native-app-tour.md
+  - react-native-walkthrough.md
+  - react-native-coach-marks.md
   - react-native-copilot-alternative.md
   - faq.md
 

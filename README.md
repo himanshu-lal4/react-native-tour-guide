@@ -10,6 +10,9 @@ Works with Expo and React Native CLI. Zero native dependencies. New Architecture
 [![platforms](https://img.shields.io/badge/platform-iOS%20%7C%20Android-lightgrey.svg?style=flat-square)](https://github.com/himanshu-lal4/react-native-tour-guide)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/himanshu-lal4/react-native-tour-guide/blob/main/CONTRIBUTING.md)
 [![good first issues](https://img.shields.io/github/issues/himanshu-lal4/react-native-tour-guide/good%20first%20issue?style=flat-square&label=good%20first%20issues&color=7057ff)](https://github.com/himanshu-lal4/react-native-tour-guide/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+[![documentation](https://img.shields.io/badge/docs-read%20the%20guides-3b82f6?style=flat-square)](https://himanshu-lal4.github.io/react-native-tour-guide/)
+
+📚 **[Documentation & guides](https://himanshu-lal4.github.io/react-native-tour-guide/)** · 📦 **[Install from npm](https://www.npmjs.com/package/@wrack/react-native-tour-guide)**
 
 <table>
   <tr>
@@ -579,6 +582,10 @@ Issues, ideas, and pull requests of every size are welcome — bug reports and d
 - ⭐ Star the repo to help others discover it
 
 New to the project? Read [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, the project structure, and the development workflow.
+
+## Also by the same author
+
+- **[react-native-liquid-glassmorphism](https://github.com/himanshu-lal4/react-native-liquid-glassmorphism)** — authentic Liquid Glass for React Native on both iOS and Android: native `UIGlassEffect` on iOS 26, a real-time AGSL refraction shader on Android. [npm](https://www.npmjs.com/package/react-native-liquid-glassmorphism) · [docs](https://himanshu-lal4.github.io/react-native-liquid-glassmorphism/)
 
 ## License
 
