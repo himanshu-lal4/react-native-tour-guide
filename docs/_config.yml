@@ -42,13 +42,23 @@ npm_install: "npm install @wrack/react-native-tour-guide react-native-svg"
 npm_badge_slug: "%40wrack%2Freact-native-tour-guide"   # URL-encoded for shields.io
 github_slug: "himanshu-lal4/react-native-tour-guide"
 
-header_pages:
-  - getting-started.md
-  - react-native-app-tour.md
-  - react-native-walkthrough.md
-  - react-native-coach-marks.md
-  - react-native-copilot-alternative.md
-  - faq.md
+# GitHub profile the footer author name links to
+author_url: https://github.com/himanshu-lal4
+
+# Curated short nav labels (custom header.html reads these, not header_pages)
+nav_links:
+  - label: Get Started
+    url: /getting-started/
+  - label: App Tour
+    url: /react-native-app-tour/
+  - label: Walkthrough
+    url: /react-native-walkthrough/
+  - label: Coach Marks
+    url: /react-native-coach-marks/
+  - label: Onboarding
+    url: /react-native-onboarding-tutorial/
+  - label: FAQ
+    url: /faq/
 
 exclude:
   - Gemfile
