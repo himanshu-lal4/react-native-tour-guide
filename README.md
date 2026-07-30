@@ -66,6 +66,33 @@ pnpm add @wrack/react-native-tour-guide react-native-svg
 npx expo install @wrack/react-native-tour-guide react-native-svg
 ```
 
+<details>
+<summary>Installing from GitHub Packages (mirror)</summary>
+
+This package is also mirrored to GitHub Packages as `@himanshu-lal4/react-native-tour-guide`. Note that GitHub Packages requires authentication even for public packages, so installing from npm (above) is recommended for most users.
+
+1. Create a GitHub [personal access token](https://github.com/settings/tokens) with the `read:packages` scope.
+2. Add the scope routing and token to your project's `.npmrc`:
+
+```ini
+@himanshu-lal4:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN
+```
+
+3. Install (only the `@himanshu-lal4` scope routes to GitHub — all other dependencies still come from npm):
+
+```bash
+npm install @himanshu-lal4/react-native-tour-guide react-native-svg
+```
+
+4. Import from the mirrored name:
+
+```ts
+import { TourGuideProvider } from '@himanshu-lal4/react-native-tour-guide';
+```
+
+</details>
+
 ### Optional dependencies
 
 These are only needed for enhanced visual effects:
