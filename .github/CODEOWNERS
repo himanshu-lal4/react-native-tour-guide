@@ -1,2 +1,6 @@
 # Default — all PRs require review from the maintainer
 * @himanshu-lal4
+
+# Sponsor/funding config is owned by the maintainer -- PRs touching these need their review
+FUNDING.yml @himanshu-lal4
+CODEOWNERS @himanshu-lal4
