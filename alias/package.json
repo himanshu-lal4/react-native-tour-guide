@@ -1,0 +1,39 @@
+{
+  "name": "react-native-tour-guide",
+  "version": "1.0.1",
+  "description": "Alias for @wrack/react-native-tour-guide — React Native tour guide, walkthrough, and coach marks library. Auto shape-matching spotlight, smart auto-scroll, themeable tooltips. No native dependencies, works in Expo Go.",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["index.js", "index.d.ts", "llms.txt", "README.md"],
+  "dependencies": {
+    "@wrack/react-native-tour-guide": "^1.0.1"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*",
+    "react-native-svg": ">=13.0.0",
+    "react-native-web": ">=0.19.0"
+  },
+  "keywords": [
+    "react-native", "react-native-tour-guide", "tour-guide", "walkthrough", "onboarding",
+    "coach-marks", "coachmarks", "app-tour", "user-guide", "tutorial", "spotlight",
+    "feature-discovery", "guided-tour", "user-onboarding", "expo", "expo-compatible",
+    "typescript", "ios", "android", "ftue"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/himanshu-lal4/react-native-tour-guide.git",
+    "directory": "alias"
+  },
+  "homepage": "https://himanshu-lal4.github.io/react-native-tour-guide/",
+  "bugs": "https://github.com/himanshu-lal4/react-native-tour-guide/issues",
+  "license": "MIT",
+  "sideEffects": false
+}

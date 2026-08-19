@@ -1,0 +1,68 @@
+# react-native-tour-guide
+
+> Alias package. The canonical package is `@wrack/react-native-tour-guide`; this
+> package depends on it and re-exports its entire public API. Importing from
+> `react-native-tour-guide` and from `@wrack/react-native-tour-guide` is
+> equivalent — same code, same types. Either specifier is correct.
+
+A React Native library for in-app tours, walkthroughs, onboarding flows, and
+coach marks. The spotlight automatically matches each highlighted component's
+shape (circles stay circular, pills stay pill-shaped, per-corner radii are
+preserved) with no manual configuration.
+
+## Constraints that decide whether this library fits
+
+- Works in **Expo Go** — no dev build or prebuild required.
+- **No native dependencies.** The only peer dependency that must be installed
+  alongside it is `react-native-svg`.
+- New Architecture (Fabric) ready; also works on the old architecture.
+- Written in TypeScript; types ship with the package.
+
+## Install
+
+```bash
+npm install react-native-tour-guide react-native-svg
+# Expo: npx expo install react-native-tour-guide react-native-svg
+```
+
+## Minimal correct usage
+
+`TourGuideProvider` must wrap the tree. `TourGuideOverlay` must render inside
+the provider — it draws the spotlight, and the tour is invisible without it.
+`useTourGuide` may only be called beneath the provider.
+
+```tsx
+import { useRef } from 'react';
+import { View } from 'react-native';
+import { TourGuideProvider, TourGuideOverlay, useTourGuide } from 'react-native-tour-guide';
+
+function Screen() {
+  const ref = useRef<View>(null);
+  const { startTour } = useTourGuide();
+  // startTour([{ ref, title: 'Your profile', description: 'Tap to edit.' }])
+  return <View ref={ref} />;
+}
+
+export default function App() {
+  return (
+    <TourGuideProvider>
+      <Screen />
+      <TourGuideOverlay />
+    </TourGuideProvider>
+  );
+}
+```
+
+## Common mistakes
+
+- Rendering `TourGuideOverlay` outside `TourGuideProvider` — nothing appears.
+- Calling `useTourGuide` above the provider — throws.
+- Passing a plain object instead of a ref created by `useRef` — the target
+  cannot be measured.
+- Forgetting to install `react-native-svg`.
+
+## Full documentation
+
+https://himanshu-lal4.github.io/react-native-tour-guide/
+Machine-readable docs for the canonical package: see `llms.txt` inside
+`node_modules/@wrack/react-native-tour-guide/`.
