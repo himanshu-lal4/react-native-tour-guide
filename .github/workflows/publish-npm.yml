@@ -1,23 +1,18 @@
 name: Publish to npm
 
-# Publishes both npm packages for this repo, with provenance (the "verified"
+# Publishes @wrack/react-native-tour-guide with provenance (the "verified"
 # badge on the npm page). Provenance can ONLY be generated from CI — a local
 # `npm publish` will never produce one.
 #
-#   @wrack/react-native-tour-guide   the canonical package (job: publish)
-#   react-native-tour-guide          the unscoped alias in alias/ (job: publish-alias)
-#
 # Auth uses npm Trusted Publishing (OIDC): no NPM_TOKEN secret is needed.
-# One-time setup on npmjs.com, per package, under Settings → Trusted Publisher:
+# One-time setup on npmjs.com, under Settings → Trusted Publisher:
 #   Publisher:   GitHub Actions
 #   Repository:  himanshu-lal4/react-native-tour-guide
 #   Workflow:    publish-npm.yml
 #   Environment: (leave blank)
 #
-# NOTE: npm cannot configure a trusted publisher for a package that does not
-# exist yet, so a brand-new name must be published once by hand before this
-# workflow can take over. Until Trusted Publisher is configured for a package,
-# its job fails at the publish step with an auth error — expected, not a bug.
+# Until Trusted Publisher is configured, this workflow fails at the publish
+# step with an auth error — expected, not a bug in the workflow.
 
 on:
   workflow_dispatch:
@@ -49,47 +44,4 @@ jobs:
         run: yarn build
 
       - name: Publish to npm
-        run: npm publish --provenance --access public --ignore-scripts
-
-  publish-alias:
-    name: Publish react-native-tour-guide (alias)
-    needs: publish
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Update npm
-        run: npm install -g npm@latest
-
-      # The alias carries no code — its only job is to point at the canonical
-      # package. If its version or its dependency pin drifts, consumers of the
-      # unscoped name silently get an older library than consumers of the
-      # scoped one. Fail the release rather than publish that.
-      - name: Verify alias is in sync with the canonical package
-        run: |
-          root=$(node -p "require('./package.json').version")
-          alias_version=$(node -p "require('./alias/package.json').version")
-          alias_pin=$(node -p "require('./alias/package.json').dependencies['@wrack/react-native-tour-guide']")
-          echo "canonical: $root"
-          echo "alias:     $alias_version (pins $alias_pin)"
-          fail=0
-          if [ "$alias_version" != "$root" ]; then
-            echo "::error::alias/package.json version ($alias_version) != canonical ($root)"
-            fail=1
-          fi
-          if [ "$alias_pin" != "^$root" ]; then
-            echo "::error::alias/package.json pins $alias_pin, expected ^$root"
-            fail=1
-          fi
-          exit $fail
-
-      - name: Publish alias to npm
-        working-directory: alias
         run: npm publish --provenance --access public --ignore-scripts
