@@ -4,9 +4,9 @@ Published to **two registries** — keep them in sync:
 
 | Registry | Package name | How it publishes |
 | --- | --- | --- |
-| npm (primary) | `@wrack/react-native-tour-guide` | manual `npm publish` |
+| npm (primary) | `@wrack/react-native-tour-guide` | `.github/workflows/publish-npm.yml` |
 | GitHub Packages (mirror) | `@himanshu-lal4/react-native-tour-guide` | `.github/workflows/publish-github-packages.yml` |
-| npm (alias) | `react-native-tour-guide` | manual `npm publish` from `alias/` |
+| npm (alias) | `react-native-tour-guide` | `.github/workflows/publish-npm.yml` (job `publish-alias`) |
 
 ## Release checklist — IMPORTANT
 
@@ -25,11 +25,24 @@ resolve to the same code. It exists because the repo, the docs URL and every
 external link spell the name unscoped, so that is the name a reader (or a coding
 agent) guesses; without it, `npm install react-native-tour-guide` 404s.
 
-On every release, after publishing `@wrack/react-native-tour-guide`:
+On every release, bump `alias/package.json` `version` **and** its
+`dependencies["@wrack/react-native-tour-guide"]` to the new version. Publishing
+itself is handled by `publish-npm.yml`, which refuses to publish the alias if
+either value has drifted from the canonical package — a drifted alias would
+silently serve an older library to anyone using the unscoped name.
 
-1. Bump `alias/package.json` `version` **and** its
-   `dependencies["@wrack/react-native-tour-guide"]` to the new version.
-2. `cd alias && npm publish`.
+**Bootstrap caveat.** npm cannot configure a trusted publisher for a package
+that does not exist, so `react-native-tour-guide` must be published by hand
+**once** before the workflow can take it over:
+
+```sh
+cd alias && npm publish --access public --otp=<code-from-authenticator>
+```
+
+Then on npmjs.com, for **each** of the two packages, set Settings → Trusted
+Publisher to GitHub Actions / `himanshu-lal4/react-native-tour-guide` /
+`publish-npm.yml`, environment blank. After that no npm token is ever needed
+and both packages publish with provenance.
 
 Canonical stays `@wrack/react-native-tour-guide`. The alias is never the source
 of truth and never contains code.
