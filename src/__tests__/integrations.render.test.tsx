@@ -397,9 +397,12 @@ describe('integrations', () => {
     it('a keepSpotlight tour cannot leak its layout into the next tour', async () => {
       await renderTour();
       // Tour A: single keepSpotlight step — nothing ever accumulates.
-      await start([step({ id: 'a', targetRef: measurableRef(10, 20, 100, 50), keepSpotlight: true })], {
-        motion: 'none',
-      });
+      await start(
+        [step({ id: 'a', targetRef: measurableRef(10, 20, 100, 50), keepSpotlight: true })],
+        {
+          motion: 'none',
+        }
+      );
       await act(async () => api.endTour());
 
       // Tour B: step 0 centered, then advance — the reconciliation must NOT

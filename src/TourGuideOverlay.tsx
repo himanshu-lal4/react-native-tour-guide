@@ -203,13 +203,38 @@ const TourGuideOverlay: React.FC = () => {
   // iOS measureInWindow already uses full-screen coordinates, so no offset.
   // NB: use the safe-area top only (not extraInsets) — a tab bar doesn't shift
   // measureInWindow, and using raw StatusBar.currentHeight risks px-vs-dp bugs.
+  // Inline mode: rather than guessing status-bar geometry (OEMs disagree on
+  // whether measureInWindow's origin includes the status bar, and edge-to-edge
+  // apps span behind it), the overlay measures ITS OWN window position and the
+  // correction falls out empirically: overlay-local = window - overlayOrigin.
+  const inlineOriginY = useRef(0);
+  const inlineRootRef = useRef<React.ComponentRef<typeof View>>(null);
+  const [inlineOriginVersion, setInlineOriginVersion] = useState(0);
+  const onInlineRootLayout = useCallback(() => {
+    const node = inlineRootRef.current as unknown as {
+      measureInWindow?: (cb: (x: number, y: number) => void) => void;
+    } | null;
+    node?.measureInWindow?.((_x, y) => {
+      if (!isMounted.current) return;
+      if (Math.abs(y - inlineOriginY.current) > 0.5) {
+        inlineOriginY.current = y;
+        // Force a re-measure of the current step against the new origin.
+        setInlineOriginVersion((v) => v + 1);
+      }
+    });
+  }, []);
+
   const measureTopOffset = useMemo(() => {
-    if (isWeb || Platform.OS !== 'android') return 0;
-    // Inline overlay renders inside the app's own view tree, so it shares
-    // measureInWindow's coordinate space — no status-bar correction needed.
-    if (config?.overlayMode === 'inline') return 0;
+    if (isWeb) return 0;
+    if (config?.overlayMode === 'inline') {
+      // Same measureInWindow space on both sides — subtract the overlay's own
+      // origin. 0 on devices where the spaces already coincide.
+      return -inlineOriginY.current;
+    }
+    if (Platform.OS !== 'android') return 0;
     return resolveSafeAreaInsets({ insets: config?.insets }).top;
-  }, [config?.insets, config?.overlayMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config?.insets, config?.overlayMode, inlineOriginVersion]);
 
   // Refs for cleanup
   const delayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -267,11 +292,20 @@ const TourGuideOverlay: React.FC = () => {
     beforeRanKey.current = null;
   }, [config]);
 
-  // Kept spotlights (step.keepSpotlight): index → inner subpath. Rebuilt into
-  // the keptPaths array whenever the map changes; reconciled on step changes
-  // so navigating back un-keeps everything at or after the new index.
-  const keptShapes = useRef<Map<number, string>>(new Map());
-  const [keptPaths, setKeptPaths] = useState<string[]>([]);
+  // Kept spotlights (step.keepSpotlight): index → the DATA needed to redraw
+  // the hole, not a frozen path string. Window coordinates go stale the moment
+  // the page scrolls — a frozen hole then sits over unrelated content — so
+  // each entry remembers the scroll offset at capture time and the hole is
+  // re-generated with the current offset applied.
+  interface KeptEntry {
+    layout: SpotlightTarget;
+    padding: NonNullable<TourStep['spotlightPadding']> | 0;
+    radius: ReturnType<typeof extractBorderRadius> | number;
+    /** Tracked scroll offset (useTourScroll) when captured, if available */
+    scrollYAtCapture?: number;
+  }
+  const keptShapes = useRef<Map<number, KeptEntry>>(new Map());
+  const [keptVersion, setKeptVersion] = useState(0);
   // The last layout actually committed for the current step, with everything
   // needed to reconstruct its cutout shape when the tour moves on.
   const lastCommitted = useRef<{
@@ -748,7 +782,7 @@ const TourGuideOverlay: React.FC = () => {
         lastCommitted.current = null;
         if (keptShapes.current.size > 0) {
           keptShapes.current.clear();
-          setKeptPaths([]);
+          setKeptVersion((v) => v + 1);
         }
       }
       return undefined;
@@ -786,36 +820,17 @@ const TourGuideOverlay: React.FC = () => {
               (prevCommit.step.targetId ? getTarget(prevCommit.step.targetId)?.style : undefined),
             prevCommit.layout
           );
-        const shape = computeShape(
-          prevCommit.layout,
-          prevCommit.step.spotlightPadding ?? 0,
-          radius
-        );
-        // A custom maskPath must survive being kept — otherwise a star-shaped
-        // spotlight degrades to a rounded rect the moment the tour moves on.
-        let inner = shapeInnerPath(shape);
-        const maskPath = config?.spotlightStyles?.maskPath;
-        if (maskPath) {
-          const autoBounds =
-            shape.kind === 'rect'
-              ? { x: shape.x, y: shape.y, width: shape.width, height: shape.height }
-              : shape.bounds;
-          try {
-            const d = maskPath({
-              target: prevCommit.layout,
-              bounds: autoBounds,
-              screenWidth: screenDimensions.width,
-              screenHeight: screenDimensions.height,
-            });
-            if (typeof d === 'string' && d.length > 0) inner = d;
-          } catch {
-            // Fall back to the automatic shape, same as the live spotlight does.
-          }
-        }
-        map.set(prevCommit.index, inner);
+        map.set(prevCommit.index, {
+          layout: prevCommit.layout,
+          padding: prevCommit.step.spotlightPadding ?? 0,
+          radius,
+          // No scroll reported yet ⇒ the offset baseline is 0, not "unknown" —
+          // otherwise a hole captured before the first scroll never translates.
+          scrollYAtCapture: __getTrackedScrollY?.() ?? 0,
+        });
         changed = true;
       }
-      if (changed) setKeptPaths([...map.values()]);
+      if (changed) setKeptVersion((v) => v + 1);
     }
 
     const startMeasurement = (attempt = 0) => {
@@ -977,6 +992,7 @@ const TourGuideOverlay: React.FC = () => {
     fallBackToCentered,
     scrollAndMeasure,
     setTargetLayout,
+    inlineOriginVersion,
   ]);
 
   // A fresh real measurement supersedes any stale follow position.
@@ -987,6 +1003,52 @@ const TourGuideOverlay: React.FC = () => {
   // What renders: the live follow position while the user scrolls, else the
   // last committed measurement.
   const renderLayout = followLayout ?? targetLayout;
+
+  // Kept holes, re-generated for the CURRENT scroll position. When the page
+  // has scrolled since a hole was captured (tour auto-scroll or a followTarget
+  // free scroll), the hole moves with the content instead of hovering over
+  // whatever scrolled into its old window position. Without a tracked offset
+  // (useTourScroll unwired) the delta is 0 — the previous static behaviour.
+  const keptPaths = useMemo(() => {
+    if (keptShapes.current.size === 0) return [];
+    const nowY = __getTrackedScrollY?.() ?? 0;
+    const maskPath = config?.spotlightStyles?.maskPath;
+    return [...keptShapes.current.values()].map((entry) => {
+      const dy = entry.scrollYAtCapture !== undefined ? entry.scrollYAtCapture - nowY : 0;
+      const layout = { ...entry.layout, y: entry.layout.y + dy };
+      const shape = computeShape(layout, entry.padding, entry.radius ?? undefined);
+      // A custom maskPath must survive being kept — otherwise a custom
+      // silhouette degrades to a rounded rect the moment the tour moves on.
+      if (maskPath) {
+        const autoBounds =
+          shape.kind === 'rect'
+            ? { x: shape.x, y: shape.y, width: shape.width, height: shape.height }
+            : shape.bounds;
+        try {
+          const d = maskPath({
+            target: layout,
+            bounds: autoBounds,
+            screenWidth: screenDimensions.width,
+            screenHeight: screenDimensions.height,
+          });
+          if (typeof d === 'string' && d.length > 0) return d;
+        } catch {
+          // fall through to the automatic shape
+        }
+      }
+      return shapeInnerPath(shape);
+    });
+    // followLayout re-renders per scroll frame while following, which is what
+    // keeps the delta fresh; keptVersion covers capture/clear.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    keptVersion,
+    followLayout,
+    targetLayout,
+    __getTrackedScrollY,
+    config?.spotlightStyles?.maskPath,
+    screenDimensions,
+  ]);
 
   // Remember the committed layout for keepSpotlight bookkeeping — including
   // follow updates, so a kept hole lands where the target actually IS.
@@ -1260,7 +1322,13 @@ const TourGuideOverlay: React.FC = () => {
   // absoluteFill covers the whole screen.
   if (config?.overlayMode === 'inline') {
     return (
-      <View style={[StyleSheet.absoluteFill, inlineStyles.layer]} pointerEvents="box-none">
+      <View
+        ref={inlineRootRef}
+        onLayout={onInlineRootLayout}
+        collapsable={false}
+        style={[StyleSheet.absoluteFill, inlineStyles.layer]}
+        pointerEvents="box-none"
+      >
         <SpotlightOverlay {...spotlightProps} />
         {renderTooltipContent()}
       </View>

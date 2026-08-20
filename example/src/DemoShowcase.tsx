@@ -1,25 +1,22 @@
 /**
  * DemoShowcase — the screen used to record the README demo.
  *
- * Deliberately NOT a feature harness. It is a plausible, finished-looking
- * product screen, and the tour runs over it the way it would in a real app.
- * Every step demonstrates a different capability *incidentally* — a circular
- * avatar produces a circular spotlight, a pill button produces a pill, the last
- * transaction is off-screen so the tour has to scroll — instead of announcing
- * "here is the circle feature".
+ * Deliberately reads as an APP-TOUR DEMO, not as some other product: every
+ * component is a neutral, self-describing UI piece (no fake money, names or
+ * activity feeds), and each tour step demonstrates one library capability:
  *
- * Five steps, ~2s each. Short enough that the GIF loops before a reader scrolls
- * past it.
+ *  1. avatar        — declarative <TourTarget> + circular shape matching
+ *  2. hero card     — exact corner-radius matching (morph transition)
+ *  3. "Tap me" pill — interactive step: touches pass through the spotlight
+ *  4. ticket        — per-corner radii + a fully CUSTOM tooltip (your Figma UI)
+ *  5. grid card     — motion: 'bounce' spring transition
+ *  6. last list row — auto-scroll + settle, followTarget invitation
+ *  7. tab bar       — motion: 'fade' + edge-aware tooltip flip
+ *
+ * Seven steps at 2s ≈ a 15s take → a ~10s README GIF after speed-up.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   SafeAreaProvider,
   SafeAreaView,
@@ -31,15 +28,14 @@ import {
   TourTarget,
   createTheme,
   useTourGuide,
+  useTourScroll,
 } from '@wrack/react-native-tour-guide';
-import type { TourGuideConfig, TourStep } from '@wrack/react-native-tour-guide';
+import type { TooltipProps, TourGuideConfig, TourStep } from '@wrack/react-native-tour-guide';
 
-// Self-play pacing for recording. Slow on device, sped up in post by
-// scripts/make-gif.sh so the result is crisp rather than frantic.
 const AUTO_PLAY = true;
-const PACE = 2600;
+const PACE = 2000;
 
-// ─── Design tokens ────────────────────────────────────────────────────────────
+// ─── Design tokens: neutral demo chrome, indigo accent ───────────────────────
 const C = {
   bg: '#F4F5F9',
   surface: '#FFFFFF',
@@ -48,8 +44,6 @@ const C = {
   hairline: '#E8EAF0',
   brand: '#4F46E5',
   brandDeep: '#3730A3',
-  mint: '#10B981',
-  rose: '#F43F5E',
   amber: '#F59E0B',
 };
 
@@ -69,105 +63,177 @@ const theme = createTheme({
   },
 });
 
-// ─── Data ─────────────────────────────────────────────────────────────────────
-const ACTIONS = [
-  { key: 'send', label: 'Send', tint: C.brand },
-  { key: 'request', label: 'Request', tint: C.mint },
-  { key: 'topup', label: 'Top up', tint: C.amber },
-  { key: 'split', label: 'Split', tint: C.rose },
-];
+// A fully custom tooltip for ONE step — the headless contract in ~30 lines.
+// Deliberately styled nothing like the built-in tooltip so the difference reads.
+function MiniTooltip({ title, description, position, targetHeight, onNext, onSkip }: TooltipProps) {
+  return (
+    <View
+      style={[mini.card, { top: position.y + (targetHeight ?? 0) + 14, left: 20, right: 20 }]}
+    >
+      <View style={mini.badge}>
+        <Text style={mini.badgeText}>YOUR UI ✦</Text>
+      </View>
+      <View style={mini.accent} />
+      <View style={mini.body}>
+        <Text style={mini.title}>{title}</Text>
+        <Text style={mini.text}>{description}</Text>
+      </View>
+      <Pressable onPress={onSkip} hitSlop={8}>
+        <Text style={mini.skip}>✕</Text>
+      </Pressable>
+      <Pressable onPress={onNext} style={mini.next}>
+        <Text style={mini.nextText}>→</Text>
+      </Pressable>
+    </View>
+  );
+}
 
-const SPEND = [38, 52, 30, 64, 48, 72, 44];
-const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const mini = StyleSheet.create({
+  card: {
+    position: 'absolute',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    gap: 12,
+    shadowColor: '#0B1020',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  badge: {
+    position: 'absolute',
+    top: -10,
+    right: 14,
+    backgroundColor: '#F59E0B',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  badgeText: { fontSize: 10, fontWeight: '800', color: '#1F2937', letterSpacing: 0.6 },
+  accent: { width: 4, alignSelf: 'stretch', borderRadius: 2, backgroundColor: '#F59E0B' },
+  body: { flex: 1 },
+  title: { fontSize: 13, fontWeight: '800', color: '#0E1116', letterSpacing: 0.2 },
+  text: { fontSize: 12.5, color: '#6B7280', marginTop: 2, lineHeight: 17 },
+  skip: { color: '#9CA3AF', fontSize: 14, paddingHorizontal: 2 },
+  next: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#0E1116',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nextText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+});
 
-const TX = [
-  { id: '1', name: 'Aurora Coffee', note: 'Today · 08:12', amount: '-$4.80', tint: '#8B5CF6', initials: 'AC' },
-  { id: '2', name: 'Nimbus Cloud', note: 'Today · 07:40', amount: '-$29.00', tint: '#0EA5E9', initials: 'NC' },
-  { id: '3', name: 'Marta Ruiz', note: 'Yesterday', amount: '+$120.00', tint: C.mint, initials: 'MR' },
-  { id: '4', name: 'Bloom Grocery', note: 'Yesterday', amount: '-$63.25', tint: C.amber, initials: 'BG' },
-  { id: '5', name: 'Transit Card', note: 'Mon · 18:05', amount: '-$2.75', tint: '#64748B', initials: 'TC' },
-  { id: '6', name: 'Payday', note: 'Mon · 09:00', amount: '+$3,420.00', tint: C.mint, initials: 'PD' },
-];
-
-const TABS = ['Home', 'Cards', 'Invest', 'You'];
+const TABS = ['Home', 'Explore', 'Alerts', 'Profile'];
+const LIST = Array.from({ length: 10 }, (_, i) => `List item ${i + 1}`);
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
-function Wallet() {
-  const { startTour, isActive } = useTourGuide();
+function Demo() {
+  const { startTour, isActive, setStepCompleted, nextStep, currentStep, activeSteps } =
+    useTourGuide();
   const insets = useSafeAreaInsets();
 
   const scrollRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const scrollY = useRef(0);
+  // One hook wires followTarget, the exact scroll-settle signal, AND offset
+  // tracking — spread onto the ScrollView below.
+  const { scrollProps } = useTourScroll();
 
-  const balanceRef = useRef(null);
-  const actionRef = useRef(null);
-  const payRef = useRef(null);
+  const tapRef = useRef(null);
+  const ticketRef = useRef(null);
+  const gridRef = useRef(null);
+  const lastRowRef = useRef(null);
   const tabRef = useRef(null);
 
   const [tab, setTab] = useState(0);
+  const [tapped, setTapped] = useState(false);
+
+  const auto = AUTO_PLAY ? PACE : undefined;
+  const onTapStep = activeSteps[currentStep]?.id === 'tap';
 
   const steps: TourStep[] = [
     {
       id: 'avatar',
-      // Declarative targeting: the avatar is wrapped in <TourTarget id="avatar">
-      // below — no ref threading, and the TourTarget's style drives the shape.
-      targetId: 'avatar',
-      title: 'Your profile',
+      targetId: 'avatar', // declarative — <TourTarget id="avatar"> below, no refs
+      title: 'Any shape, zero config',
       description:
-        'The spotlight reads the avatar’s border radius and comes out perfectly round. No shape config.',
-      spotlightPadding: 6,
+        'The spotlight reads each target’s real border radius — this circle stays a perfect circle.',
       tooltipPosition: 'bottom',
-      autoAdvance: AUTO_PLAY ? PACE : undefined,
+      autoAdvance: auto,
     },
     {
-      id: 'balance',
-      targetRef: balanceRef,
-      title: 'Balance at a glance',
+      id: 'hero',
+      targetId: 'hero',
+      title: 'Edge-to-edge precision',
       description:
-        'Cards keep their exact corner radius, so the highlight always matches the real UI.',
-      targetStyle: { borderRadius: 24 },
-      spotlightPadding: 8,
-      autoAdvance: AUTO_PLAY ? PACE : undefined,
+        'Corners matched exactly, cutout hugging the card — and the spotlight MORPHS between steps.',
+      autoAdvance: auto,
     },
     {
-      id: 'actions',
-      targetRef: actionRef,
-      title: 'Move money fast',
-      description:
-        'This step is interactive — the Send button underneath is really tappable while highlighted.',
+      id: 'tap',
+      targetRef: tapRef,
+      title: 'Interactive steps',
+      description: 'This button is really tappable through the spotlight — go on, tap it.',
       targetStyle: { borderRadius: 999 },
-      spotlightPadding: 6,
       interactive: true,
-      autoAdvance: AUTO_PLAY ? PACE : undefined,
+      autoAdvance: auto,
     },
     {
-      id: 'payday',
-      targetRef: payRef,
-      title: 'Nothing gets missed',
+      id: 'ticket',
+      targetRef: ticketRef,
+      title: 'Your Figma design, our engine',
       description:
-        'This row starts off-screen. The tour scrolls it into view and waits for the scroll to settle.',
-      targetStyle: { borderRadius: 16 },
-      spotlightPadding: 6,
-      autoAdvance: AUTO_PLAY ? PACE : undefined,
+        'This tooltip is 100% custom UI — the library still measures, places and sequences. (Corners matched one by one.)',
+      targetStyle: {
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 8,
+        borderBottomRightRadius: 28,
+        borderBottomLeftRadius: 8,
+      },
+      renderTooltip: (props) => <MiniTooltip {...props} />,
+      autoAdvance: auto,
+    },
+    {
+      id: 'grid',
+      targetRef: gridRef,
+      title: 'Pick your motion',
+      description: 'That arrival was motion: “bounce”. Every step can choose morph, bounce or fade.',
+      targetStyle: { borderRadius: 20 },
+      motion: 'bounce',
+      autoAdvance: auto,
+    },
+    {
+      id: 'last-row',
+      targetRef: lastRowRef,
+      title: 'Off-screen? No problem',
+      description:
+        'This row was below the fold — the tour scrolled to it and waited for the scroll to settle. Scroll yourself: the highlight follows.',
+      targetStyle: { borderRadius: 14 },
+      autoAdvance: auto ? auto + 800 : undefined,
     },
     {
       id: 'tabs',
       targetRef: tabRef,
-      title: 'Always readable',
+      title: 'Edge-aware, always',
       description:
-        'Near the bottom edge the tooltip flips above the target and stays clear of the home indicator.',
+        'Faded in with motion: “fade” — and at the screen edge the tooltip flips above the target on its own.',
       targetStyle: { borderRadius: 18 },
-      spotlightPadding: 8,
-      autoAdvance: AUTO_PLAY ? PACE : undefined,
+      motion: 'fade',
+      autoAdvance: auto,
     },
   ];
 
   const config: TourGuideConfig = {
     ...theme,
-    tourId: 'wallet-onboarding',
-    // Inline overlay: no Modal, so interactive steps can pass touches through
-    // the spotlight to the app underneath.
-    overlayMode: 'inline',
+    tourId: 'app-tour-demo',
+    overlayMode: 'inline', // no Modal → interactive steps can pass touches through
+    followTarget: true,
+    statusBarStyle: 'light-content',
     showProgressDots: true,
     showStepCounter: false,
     nextButtonText: 'Next',
@@ -187,9 +253,12 @@ function Wallet() {
     },
   };
 
-  const begin = useCallback(() => startTour(steps, config), [startTour, steps, config]);
+  const begin = useCallback(() => {
+    setTapped(false);
+    startTour(steps, config);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startTour]);
 
-  // Auto-start once for recording, then loop after a beat.
   useEffect(() => {
     if (!AUTO_PLAY) return undefined;
     const t = setTimeout(begin, 900);
@@ -204,96 +273,100 @@ function Wallet() {
           ref={scrollRef}
           onScroll={(e) => {
             scrollY.current = e.nativeEvent.contentOffset.y;
+            scrollProps.onScroll(e); // feeds followTarget + the settle signal
           }}
-          scrollEventThrottle={16}
+          onMomentumScrollEnd={scrollProps.onMomentumScrollEnd}
+          scrollEventThrottle={scrollProps.scrollEventThrottle}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={s.scroll}
         >
-          {/* Header */}
+          {/* Header — the screen says what it is */}
           <View style={s.header}>
             <View>
-              <Text style={s.hello}>Good morning</Text>
-              <Text style={s.name}>Himanshu</Text>
+              <Text style={s.kicker}>react-native-tour-guide</Text>
+              <Text style={s.title}>App Tour</Text>
             </View>
             <TourTarget id="avatar" style={s.avatar}>
-              <Text style={s.avatarText}>H</Text>
+              <Text style={s.avatarText}>✦</Text>
             </TourTarget>
           </View>
 
-          {/* Balance card */}
-          <View ref={balanceRef} collapsable={false} style={s.card}>
-            <View style={s.cardGlow} />
-            <Text style={s.cardLabel}>Total balance</Text>
-            <Text style={s.cardValue}>$12,480.55</Text>
-            <View style={s.cardRow}>
-              <View style={s.deltaPill}>
-                <Text style={s.deltaText}>↑ 2.4%</Text>
+          {/* Hero card */}
+          <TourTarget id="hero" style={{ borderRadius: 24 }}>
+            <View style={s.hero}>
+              <Text style={s.heroLabel}>THIS SCREEN IS THE DEMO</Text>
+              <Text style={s.heroTitle}>Every step highlights one feature</Text>
+              <View style={s.heroRow}>
+                <View style={s.heroPill}>
+                  <Text style={s.heroPillText}>7 steps</Text>
+                </View>
+                <Text style={s.heroHint}>sit back — it plays itself</Text>
               </View>
-              <Text style={s.cardHint}>vs. last month</Text>
+            </View>
+          </TourTarget>
+
+          {/* Interactive pill */}
+          <View style={s.pillRow}>
+            <Pressable
+              ref={tapRef}
+              onPress={() => {
+                setTapped(true);
+                if (onTapStep) {
+                  setStepCompleted('tap', true);
+                  nextStep();
+                }
+              }}
+              style={[s.pill, s.pillPrimary]}
+            >
+              <Text style={s.pillPrimaryText}>{tapped ? 'Tapped ✓' : 'Tap me'}</Text>
+            </Pressable>
+            <View style={s.pill}>
+              <Text style={s.pillText}>Or don’t</Text>
             </View>
           </View>
 
-          {/* Quick actions */}
-          <View style={s.actions}>
-            {ACTIONS.map((a, i) => (
-              <View
-                key={a.key}
-                ref={i === 0 ? actionRef : undefined}
-                collapsable={false}
-                style={[s.action, { backgroundColor: i === 0 ? a.tint : C.surface }]}
-              >
-                <Text style={[s.actionText, { color: i === 0 ? '#FFFFFF' : C.ink }]}>
-                  {a.label}
-                </Text>
-              </View>
-            ))}
+          {/* Asymmetric ticket — per-corner radii */}
+          <View ref={ticketRef} collapsable={false} style={s.ticket}>
+            <Text style={s.ticketBadge}>◨</Text>
+            <View style={s.ticketBody}>
+              <Text style={s.ticketTitle}>Odd corners? Matched.</Text>
+              <Text style={s.ticketText}>28 · 8 · 28 · 8 — extracted per corner</Text>
+            </View>
           </View>
 
-          {/* Spending */}
-          <View style={s.panel}>
-            <View style={s.panelHead}>
-              <Text style={s.panelTitle}>This week</Text>
-              <Text style={s.panelMeta}>$412.30</Text>
-            </View>
-            <View style={s.chart}>
-              {SPEND.map((v, i) => (
-                <View key={i} style={s.chartCol}>
-                  <View style={[s.bar, { height: v, backgroundColor: i === 5 ? C.brand : '#DDE1EC' }]} />
-                  <Text style={s.barLabel}>{DAYS[i]}</Text>
+          {/* Component grid — bounce target */}
+          <View ref={gridRef} collapsable={false} style={s.grid}>
+            <Text style={s.gridTitle}>Works over any layout</Text>
+            <View style={s.gridRow}>
+              {['◐', '◱', '◮', '●'].map((g) => (
+                <View key={g} style={s.gridCell}>
+                  <Text style={s.gridGlyph}>{g}</Text>
                 </View>
               ))}
             </View>
           </View>
 
-          {/* Transactions */}
-          <Text style={s.sectionTitle}>Recent activity</Text>
+          {/* Generic list — the last row is the auto-scroll target */}
+          <Text style={s.sectionTitle}>A long list, for the scroll step</Text>
           <View style={s.panel}>
-            {TX.map((t, i) => (
+            {LIST.map((label, i) => (
               <View
-                key={t.id}
-                ref={t.id === '6' ? payRef : undefined}
+                key={label}
+                ref={i === LIST.length - 1 ? lastRowRef : undefined}
                 collapsable={false}
-                style={[s.row, i === TX.length - 1 && s.rowLast]}
+                style={[s.row, i === LIST.length - 1 && s.rowLast]}
               >
-                <View style={[s.rowIcon, { backgroundColor: t.tint }]}>
-                  <Text style={s.rowIconText}>{t.initials}</Text>
-                </View>
-                <View style={s.rowBody}>
-                  <Text style={s.rowName}>{t.name}</Text>
-                  <Text style={s.rowNote}>{t.note}</Text>
-                </View>
-                <Text
-                  style={[s.rowAmount, t.amount.startsWith('+') && { color: C.mint }]}
-                >
-                  {t.amount}
+                <View style={[s.rowDot, i === LIST.length - 1 && s.rowDotHot]} />
+                <Text style={s.rowText}>
+                  {i === LIST.length - 1 ? 'The tour scrolls to me' : label}
                 </Text>
               </View>
             ))}
           </View>
 
-          {!AUTO_PLAY ? (
-            <Pressable style={s.cta} onPress={begin} disabled={isActive}>
-              <Text style={s.ctaText}>Start tour</Text>
+          {!isActive ? (
+            <Pressable style={s.cta} onPress={begin}>
+              <Text style={s.ctaText}>{AUTO_PLAY ? 'Replay tour' : 'Start tour'}</Text>
             </Pressable>
           ) : null}
         </ScrollView>
@@ -321,7 +394,7 @@ export default function DemoShowcase() {
   return (
     <SafeAreaProvider>
       <TourGuideProvider>
-        <Wallet />
+        <Demo />
         <TourGuideOverlay />
       </TourGuideProvider>
     </SafeAreaProvider>
@@ -329,18 +402,6 @@ export default function DemoShowcase() {
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-const shadow = (elev: number, opacity = 0.08) =>
-  Platform.select({
-    ios: {
-      shadowColor: '#0B1020',
-      shadowOffset: { width: 0, height: elev },
-      shadowOpacity: opacity,
-      shadowRadius: elev * 2,
-    },
-    android: { elevation: elev },
-    default: {},
-  });
-
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   safe: { flex: 1 },
@@ -353,8 +414,8 @@ const s = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 20,
   },
-  hello: { fontSize: 13, color: C.inkSoft, letterSpacing: 0.2 },
-  name: { fontSize: 24, fontWeight: '700', color: C.ink, marginTop: 2, letterSpacing: -0.4 },
+  kicker: { fontSize: 12, color: C.inkSoft, letterSpacing: 0.4 },
+  title: { fontSize: 26, fontWeight: '800', color: C.ink, marginTop: 2, letterSpacing: -0.5 },
   avatar: {
     width: 44,
     height: 44,
@@ -362,100 +423,96 @@ const s = StyleSheet.create({
     backgroundColor: C.brandDeep,
     alignItems: 'center',
     justifyContent: 'center',
-    ...shadow(4, 0.18),
   },
-  avatarText: { color: '#FFFFFF', fontWeight: '700', fontSize: 17 },
+  avatarText: { color: '#FFFFFF', fontWeight: '700', fontSize: 18 },
 
-  card: {
+  hero: {
     backgroundColor: C.brand,
     borderRadius: 24,
     padding: 22,
     overflow: 'hidden',
-    ...shadow(10, 0.22),
   },
-  cardGlow: {
-    position: 'absolute',
-    top: -60,
-    right: -40,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: '#FFFFFF',
-    opacity: 0.09,
-  },
-  cardLabel: { color: '#C7D2FE', fontSize: 12, letterSpacing: 0.6, textTransform: 'uppercase' },
-  cardValue: {
+  heroLabel: { color: '#C7D2FE', fontSize: 11, letterSpacing: 1, fontWeight: '700' },
+  heroTitle: {
     color: '#FFFFFF',
-    fontSize: 34,
-    fontWeight: '700',
+    fontSize: 22,
+    fontWeight: '800',
     marginTop: 8,
-    letterSpacing: -1,
+    letterSpacing: -0.4,
+    lineHeight: 28,
   },
-  cardRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 },
-  deltaPill: {
+  heroRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 },
+  heroPill: {
     backgroundColor: 'rgba(255,255,255,0.18)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
   },
-  deltaText: { color: '#FFFFFF', fontSize: 12, fontWeight: '600' },
-  cardHint: { color: '#C7D2FE', fontSize: 12 },
+  heroPillText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  heroHint: { color: '#C7D2FE', fontSize: 12 },
 
-  actions: { flexDirection: 'row', gap: 10, marginTop: 18 },
-  action: {
+  pillRow: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  pill: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 13,
     borderRadius: 999,
     alignItems: 'center',
-    ...shadow(2, 0.06),
+    backgroundColor: C.surface,
   },
-  actionText: { fontSize: 13, fontWeight: '600' },
+  pillPrimary: { backgroundColor: C.brand },
+  pillPrimaryText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
+  pillText: { fontSize: 14, fontWeight: '600', color: C.inkSoft },
 
-  panel: {
+  ticket: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginTop: 18,
+    padding: 16,
+    backgroundColor: '#14213D',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 8,
+    borderBottomRightRadius: 28,
+    borderBottomLeftRadius: 8,
+  },
+  ticketBadge: { fontSize: 20, color: C.amber },
+  ticketBody: { flex: 1 },
+  ticketTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  ticketText: { color: '#94A3B8', fontSize: 12.5, marginTop: 2 },
+
+  grid: {
     backgroundColor: C.surface,
     borderRadius: 20,
     padding: 16,
     marginTop: 18,
-    ...shadow(3, 0.06),
   },
-  panelHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  panelTitle: { fontSize: 15, fontWeight: '700', color: C.ink },
-  panelMeta: { fontSize: 15, fontWeight: '600', color: C.inkSoft },
-  chart: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginTop: 16,
-    height: 96,
+  gridTitle: { fontSize: 15, fontWeight: '700', color: C.ink, marginBottom: 12 },
+  gridRow: { flexDirection: 'row', gap: 10 },
+  gridCell: {
+    flex: 1,
+    aspectRatio: 1.4,
+    borderRadius: 12,
+    backgroundColor: C.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  chartCol: { alignItems: 'center', gap: 8, flex: 1 },
-  bar: { width: 14, borderRadius: 7 },
-  barLabel: { fontSize: 11, color: C.inkSoft },
+  gridGlyph: { fontSize: 20, color: C.brandDeep },
 
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: C.ink,
-    marginTop: 26,
-    marginBottom: -4,
-  },
-
+  sectionTitle: { fontSize: 15, fontWeight: '700', color: C.ink, marginTop: 26, marginBottom: 10 },
+  panel: { backgroundColor: C.surface, borderRadius: 20, paddingHorizontal: 16 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: C.hairline,
-    borderRadius: 16,
+    borderRadius: 14,
   },
   rowLast: { borderBottomWidth: 0 },
-  rowIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  rowIconText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
-  rowBody: { flex: 1 },
-  rowName: { fontSize: 14, fontWeight: '600', color: C.ink },
-  rowNote: { fontSize: 12, color: C.inkSoft, marginTop: 2 },
-  rowAmount: { fontSize: 14, fontWeight: '700', color: C.ink },
+  rowDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#DDE1EC' },
+  rowDotHot: { backgroundColor: C.brand },
+  rowText: { fontSize: 14, fontWeight: '500', color: C.ink },
 
   cta: {
     marginTop: 24,
