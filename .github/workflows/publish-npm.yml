@@ -35,10 +35,13 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup
 
-      # Trusted publishing requires a recent npm; the one bundled with Node
-      # may predate OIDC support.
-      - name: Update npm
-        run: npm install -g npm@latest
+      # Trusted publishing needs npm >= 11.5.1, which is where OIDC landed.
+      # Pinned to the 11.x line rather than @latest on purpose: npm 12 requires
+      # Node ^22.22.2 || ^24.15.0 || >=26, which the runner's Node may trail,
+      # so `npm@latest` fails the install outright with EBADENGINE and takes
+      # the whole release with it (it did, for v2.0.0's first publish run).
+      - name: Pin npm to a version that supports trusted publishing
+        run: npm install -g npm@^11
 
       - name: Build package
         run: yarn build
