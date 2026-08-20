@@ -13,11 +13,14 @@ import type { StyleProp, ViewStyle } from 'react-native';
 import type {
   MeasurableRef,
   RegisteredTarget,
+  ResolvedTourGuideConfig,
   SpotlightTarget,
   TourGuideConfig,
   TourGuideContextValue,
   TourStep,
 } from './types';
+import { resolvePlatformConfig } from './utils';
+import { createTourEvents } from './events';
 import { isDev, warn, warnOnce } from './dev';
 import { validateTour } from './validation';
 
@@ -56,14 +59,14 @@ export const TourGuideProvider: React.FC<TourGuideProviderProps> = ({ children }
   const [currentStep, setCurrentStep] = useState(0);
   const [steps, setSteps] = useState<TourStep[]>([]);
   const [activeSteps, setActiveSteps] = useState<TourStep[]>([]);
-  const [config, setConfig] = useState<TourGuideConfig | undefined>(undefined);
+  const [config, setConfig] = useState<ResolvedTourGuideConfig | undefined>(undefined);
   const [targetLayout, setTargetLayout] = useState<SpotlightTarget | null>(null);
   const [activeTourId, setActiveTourId] = useState<string | undefined>(undefined);
 
   // Lock to prevent double-taps during async beforeStepChange
   const isTransitioning = useRef(false);
   // Refs for stable access in callbacks without nested setState
-  const configRef = useRef<TourGuideConfig | undefined>(undefined);
+  const configRef = useRef<ResolvedTourGuideConfig | undefined>(undefined);
   const activeStepsRef = useRef<TourStep[]>([]);
   const currentStepRef = useRef(0);
 
@@ -118,6 +121,53 @@ export const TourGuideProvider: React.FC<TourGuideProviderProps> = ({ children }
     (id: string): RegisteredTarget | undefined => targetsRef.current.get(id),
     []
   );
+
+  // Lifecycle event emitter — stable for the provider's lifetime. Lazily
+  // initialised so the factory doesn't run on every render just to be thrown
+  // away by useRef.
+  const eventsRef = useRef<ReturnType<typeof createTourEvents> | null>(null);
+  if (eventsRef.current === null) {
+    eventsRef.current = createTourEvents();
+  }
+  const events = eventsRef.current;
+
+  // Guarantees every emitted 'start' is paired with exactly one 'end', no
+  // matter which exit path runs (finish, skip, programmatic endTour, or a
+  // startTour that replaces a live tour). True when no tour is active or the
+  // active tour's 'end' has already been emitted.
+  const endEmitted = useRef(true);
+
+  // Scroll plumbing for useTourScroll: consumers report offsets/momentum-end
+  // through the hook; the overlay subscribes for followTarget tracking and the
+  // exact settle signal. Refs, not state — scroll must never re-render the app.
+  const scrollListeners = useRef(new Set<(y: number) => void>());
+  const scrollEndListeners = useRef(new Set<() => void>());
+  const trackedScrollY = useRef<number | undefined>(undefined);
+
+  const __reportScroll = useCallback((y: number) => {
+    trackedScrollY.current = y;
+    for (const cb of scrollListeners.current) cb(y);
+  }, []);
+
+  const __reportScrollEnd = useCallback(() => {
+    for (const cb of scrollEndListeners.current) cb();
+  }, []);
+
+  const __subscribeScroll = useCallback((cb: (y: number) => void) => {
+    scrollListeners.current.add(cb);
+    return () => {
+      scrollListeners.current.delete(cb);
+    };
+  }, []);
+
+  const __subscribeScrollEnd = useCallback((cb: () => void) => {
+    scrollEndListeners.current.add(cb);
+    return () => {
+      scrollEndListeners.current.delete(cb);
+    };
+  }, []);
+
+  const __getTrackedScrollY = useCallback(() => trackedScrollY.current, []);
 
   // Tours registered up front via defineTour, startable by id from anywhere.
   const definedToursRef = useRef<Map<string, { steps: TourStep[]; config?: TourGuideConfig }>>(
@@ -199,7 +249,7 @@ export const TourGuideProvider: React.FC<TourGuideProviderProps> = ({ children }
       // String form: start a tour registered with defineTour, with the passed
       // config overriding the stored one field-by-field.
       let tourSteps: TourStep[];
-      let tourConfig: TourGuideConfig | undefined;
+      let rawConfig: TourGuideConfig | undefined;
       if (typeof stepsOrId === 'string') {
         const defined = definedToursRef.current.get(stepsOrId);
         if (!defined) {
@@ -210,11 +260,15 @@ export const TourGuideProvider: React.FC<TourGuideProviderProps> = ({ children }
           return;
         }
         tourSteps = defined.steps;
-        tourConfig = configOverride ? { ...defined.config, ...configOverride } : defined.config;
+        rawConfig = configOverride ? { ...defined.config, ...configOverride } : defined.config;
       } else {
         tourSteps = stepsOrId;
-        tourConfig = configOverride;
+        rawConfig = configOverride;
       }
+
+      // Per-platform values ({ ios, android, web, default }) resolve here, so
+      // everything downstream reads plain values.
+      const tourConfig = resolvePlatformConfig(rawConfig);
 
       // Dev-only: surface malformed steps/config before they fail silently.
       validateTour(tourSteps, tourConfig);
@@ -226,6 +280,11 @@ export const TourGuideProvider: React.FC<TourGuideProviderProps> = ({ children }
           'startTour() was called while a tour was already running. The previous tour is replaced without firing its onTourEnd.',
           "Call endTour() or skipTour() first if you need the previous tour's onTourEnd to run."
         );
+        // The events API still guarantees start/end pairing even on this path.
+        if (!endEmitted.current) {
+          events.emit('end', { completed: false, tourId: configRef.current?.tourId });
+          endEmitted.current = true;
+        }
       }
 
       const filtered = tourSteps.filter((s) => s && s.active !== false);
@@ -255,6 +314,8 @@ export const TourGuideProvider: React.FC<TourGuideProviderProps> = ({ children }
       setIsActive(true);
       isActiveRef.current = true;
       tourConfig?.onTourStart?.();
+      endEmitted.current = false;
+      events.emit('start', { tourId: tourConfig?.tourId, totalSteps: filtered.length });
 
       // Dev-only: a tour with no overlay mounted renders nothing at all, with no
       // error to explain why. Check shortly after start, once mounting settles.
@@ -275,6 +336,14 @@ export const TourGuideProvider: React.FC<TourGuideProviderProps> = ({ children }
   );
 
   const endTour = useCallback(() => {
+    // endTour() is a public exit path: if the finish/skip flows haven't already
+    // emitted this tour's 'end', do it here so start/end always pair up —
+    // otherwise a custom close button or logout effect leaves analytics with
+    // an open-ended tour.
+    if (isActiveRef.current && !endEmitted.current) {
+      events.emit('end', { completed: false, tourId: configRef.current?.tourId });
+    }
+    endEmitted.current = true;
     clearMissingOverlayCheck();
     setIsActive(false);
     isActiveRef.current = false;
@@ -289,20 +358,22 @@ export const TourGuideProvider: React.FC<TourGuideProviderProps> = ({ children }
     setActiveTourId(undefined);
     setTargetLayout(null);
     isTransitioning.current = false;
-  }, [clearMissingOverlayCheck]);
+  }, [clearMissingOverlayCheck, events]);
 
   const pauseTour = useCallback(() => {
     if (isActive && !isPaused) {
       setIsPaused(true);
+      events.emit('pause', { at: currentStepRef.current });
     }
-  }, [isActive, isPaused]);
+  }, [isActive, isPaused, events]);
 
   const resumeTour = useCallback(() => {
     if (isActive && isPaused) {
       setIsPaused(false);
       setTargetLayout(null); // Force re-measurement
+      events.emit('resume', { at: currentStepRef.current });
     }
-  }, [isActive, isPaused]);
+  }, [isActive, isPaused, events]);
 
   /**
    * Run a beforeStepChange guard with the transition lock held, releasing the
@@ -366,10 +437,17 @@ export const TourGuideProvider: React.FC<TourGuideProviderProps> = ({ children }
       if (isLastStep) {
         step?.onNext?.();
         currentConfig?.onTourEnd?.(true);
+        events.emit('end', { completed: true, tourId: currentConfig?.tourId });
+        endEmitted.current = true;
         endTour();
       } else {
         step?.onNext?.();
         currentConfig?.onStepChange?.(prev, prev + 1);
+        events.emit('stepChange', {
+          from: prev,
+          to: prev + 1,
+          step: currentActiveSteps[prev + 1],
+        });
         currentStepRef.current = prev + 1;
         setCurrentStep(prev + 1);
         setTargetLayout(null);
@@ -400,6 +478,11 @@ export const TourGuideProvider: React.FC<TourGuideProviderProps> = ({ children }
     const doTransition = () => {
       step?.onPrev?.();
       currentConfig?.onStepChange?.(prev, prev - 1);
+      events.emit('stepChange', {
+        from: prev,
+        to: prev - 1,
+        step: currentActiveSteps[prev - 1],
+      });
       currentStepRef.current = prev - 1;
       setCurrentStep(prev - 1);
       setTargetLayout(null);
@@ -417,8 +500,11 @@ export const TourGuideProvider: React.FC<TourGuideProviderProps> = ({ children }
     const step = activeStepsRef.current[currentStepRef.current];
     step?.onSkip?.();
     configRef.current?.onTourEnd?.(false);
+    events.emit('skip', { at: currentStepRef.current });
+    events.emit('end', { completed: false, tourId: configRef.current?.tourId });
+    endEmitted.current = true;
     endTour();
-  }, [endTour]);
+  }, [endTour, events]);
 
   const goToStep = useCallback(
     (index: number) => {
@@ -441,6 +527,7 @@ export const TourGuideProvider: React.FC<TourGuideProviderProps> = ({ children }
       // jumping by index must not bypass a gate that Next/Back honour.
       const doTransition = () => {
         configRef.current?.onStepChange?.(from, index);
+        events.emit('stepChange', { from, to: index, step: activeStepsRef.current[index] });
         currentStepRef.current = index;
         setCurrentStep(index);
         setTargetLayout(null);
@@ -483,6 +570,12 @@ export const TourGuideProvider: React.FC<TourGuideProviderProps> = ({ children }
       getTarget,
       setTargetLayout,
       targetLayout,
+      events,
+      __reportScroll,
+      __reportScrollEnd,
+      __subscribeScroll,
+      __subscribeScrollEnd,
+      __getTrackedScrollY,
       __registerOverlay: registerOverlay,
     }),
     [
@@ -510,6 +603,12 @@ export const TourGuideProvider: React.FC<TourGuideProviderProps> = ({ children }
       defineTour,
       removeTour,
       canStartTour,
+      events,
+      __reportScroll,
+      __reportScrollEnd,
+      __subscribeScroll,
+      __subscribeScrollEnd,
+      __getTrackedScrollY,
     ]
   );
 

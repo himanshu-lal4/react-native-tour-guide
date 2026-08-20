@@ -1,4 +1,4 @@
-import type { TourStep, TourGuideConfig } from '../types';
+import type { TourStep, ResolvedTourGuideConfig as TourGuideConfig } from '../types';
 
 /**
  * These cover the mistakes that otherwise fail *silently* — the tour renders

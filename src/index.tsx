@@ -7,12 +7,17 @@ export { default as Tooltip } from './Tooltip';
 
 // Hook exports
 export { useTourPersistence } from './useTourPersistence';
+export { useTourScroll } from './useTourScroll';
+export type { TourScrollBinding } from './useTourScroll';
+export { detectStorage } from './storage';
+export type { StorageType } from './storage';
+export type { TourEvents, TourEventMap, TourEventName, TourEventHandler } from './events';
 
 // Theme exports
 export { darkTheme, lightTheme, minimalTheme, vibrantTheme, createTheme } from './themes';
 
 // Shape exports
-export { computeShape } from './shapes';
+export { computeShape, roundedRectPath, shapeInnerPath } from './shapes';
 
 // Utility exports (useful for custom tooltip renderers)
 export {
@@ -21,6 +26,7 @@ export {
   extractBorderRadius,
   resolveInsets,
   resolveSafeAreaInsets,
+  osValue,
 } from './utils';
 export { announceStep, getTooltipAccessibilityProps } from './accessibility';
 
@@ -46,6 +52,9 @@ export type {
   EdgeInsets,
   SpotlightMotion,
   SpotlightMaskPathFn,
+  OSConfig,
+  PerPlatform,
+  ResolvedTourGuideConfig,
 } from './types';
 
 export type { SpotlightBorderRadius, SpotlightPadding, ShapeBounds, ShapeResult } from './shapes';

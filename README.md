@@ -15,6 +15,14 @@ Works with Expo and React Native CLI. Zero native dependencies. New Architecture
 📚 **[Documentation & guides](https://himanshu-lal4.github.io/react-native-tour-guide/)** · 📦 **[Install from npm](https://www.npmjs.com/package/@wrack/react-native-tour-guide)**
 
 <p align="center">
+  <a href="https://github.com/sponsors/himanshu-lal4"><picture><source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/GitHub_Sponsors-21262D?style=for-the-badge&logo=githubsponsors&logoColor=EA4AAA"><img src="https://img.shields.io/badge/GitHub_Sponsors-EAEEF2?style=for-the-badge&logo=githubsponsors&logoColor=EA4AAA" height="32" alt="Sponsor on GitHub" /></picture></a>
+  &nbsp;
+  <a href="https://buymeacoffee.com/wrack"><picture><source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/Buy_Me_a_Coffee-21262D?style=for-the-badge&logo=buymeacoffee&logoColor=FFDD00"><img src="https://img.shields.io/badge/Buy_Me_a_Coffee-EAEEF2?style=for-the-badge&logo=buymeacoffee&logoColor=FFDD00" height="32" alt="Buy Me a Coffee" /></picture></a>
+</p>
+
+<p align="center"><sub>If this library saves you a sprint of edge cases, a ⭐ and a coffee keep it maintained.</sub></p>
+
+<p align="center">
   <img src="https://raw.githubusercontent.com/himanshu-lal4/react-native-tour-guide/main/IOSDemo.gif" alt="React Native tour guide demo — auto shape-matching spotlight, interactive steps, auto-scroll, and safe-area-aware tooltips" width="420" />
 </p>
 <p align="center">
@@ -337,6 +345,112 @@ automatic shape.
 
 ---
 
+## Following the target while the user scrolls
+
+Bind your scrollable to the tour with `useTourScroll`, and with
+`followTarget: true` the spotlight and tooltip stay glued to the target while
+the user scrolls freely:
+
+```tsx
+import { useTourScroll } from '@wrack/react-native-tour-guide';
+
+const { scrollProps } = useTourScroll();
+
+<ScrollView ref={scrollRef} {...scrollProps}>…</ScrollView>;
+
+startTour(steps, { scrollRef, followTarget: true });
+```
+
+Wiring `useTourScroll` also gives the tour two more things for free:
+
+- **Exact auto-scroll settling** — `onMomentumScrollEnd` tells the tour the
+  programmatic scroll finished, so the highlight lands immediately instead of
+  waiting for position polling to detect the stop.
+- **A tracked scroll offset** — `getCurrentScrollOffset` becomes redundant.
+
+Have your own `onScroll`? Compose it: the hook also returns the individual
+handlers.
+
+---
+
+## Analytics with the event emitter
+
+Subscribe once — e.g. at app root — instead of threading callbacks through every
+tour config:
+
+```tsx
+const { events } = useTourGuide();
+
+useEffect(() => {
+  const offs = [
+    events.on('start', ({ tourId, totalSteps }) => track('tour_start', { tourId, totalSteps })),
+    events.on('stepChange', ({ from, to }) => track('tour_step', { from, to })),
+    events.on('end', ({ completed, tourId }) => track('tour_end', { completed, tourId })),
+    events.on('skip', ({ at }) => track('tour_skip', { at })),
+  ];
+  return () => offs.forEach((off) => off());
+}, [events]);
+```
+
+Events: `start`, `stepChange`, `end`, `skip`, `pause`, `resume`. A throwing
+handler is isolated — analytics can never take the tour down. The config
+callbacks (`onTourStart` etc.) still work; both fire.
+
+---
+
+## Persistence without configuration
+
+`useTourPersistence()` now auto-detects storage — MMKV (v2–v4) first, then
+AsyncStorage:
+
+```tsx
+const { startTour } = useTourPersistence(); // no adapter needed
+startTour(steps, { tourId: 'onboarding' });
+```
+
+With neither installed it falls back to in-memory storage (the tour works,
+completion just isn't remembered across restarts) and says so in a dev warning.
+Passing your own adapter still works and always wins.
+
+---
+
+## Keeping earlier spotlights lit
+
+`keepSpotlight: true` on a step keeps its hole punched out of the backdrop
+after the tour moves forward past it — for "these three things work together"
+storytelling:
+
+```tsx
+startTour([
+  { id: 'a', targetId: 'search', keepSpotlight: true, ... },
+  { id: 'b', targetId: 'filters', keepSpotlight: true, ... },
+  { id: 'c', targetId: 'results', title: 'Together…', ... }, // all three lit
+]);
+```
+
+Kept holes are visual only (no pulse, no touch pass-through) and are dropped
+when the user navigates back.
+
+---
+
+## Per-platform values
+
+The layout-tuning config fields accept `{ ios, android, web, default }`
+objects:
+
+```tsx
+startTour(steps, {
+  tooltipWidth: { ios: 320, android: 300, default: 320 },
+  motion: { ios: 'bounce', default: 'morph' },
+});
+```
+
+Applies to `tooltipWidth`, `tooltipOffset`, `triangleSize`,
+`animationDuration`, `safeZoneOffset`, and `motion`. Values are resolved once
+at `startTour`; everything you read back from context is already plain.
+
+---
+
 ## How does auto shape matching work?
 
 Pass the same style you use on the component as `targetStyle` on the step. The library reads the `borderRadius` properties from that style and applies them to the spotlight.
@@ -633,6 +747,8 @@ const {
 | `interactive` | `boolean` | `false` | Let touches through the spotlight to the real element (inline mode) |
 | `renderTooltip` | `(props) => ReactNode` | — | Per-step custom tooltip (overrides the config one) |
 | `motion` | `'morph' \| 'bounce' \| 'fade' \| 'none'` | config | Spotlight transition into this step |
+| `keepSpotlight` | `boolean` | `false` | Keep this hole punched out after moving forward past the step |
+| `waitForInteractions` | `boolean` | config | Wait for InteractionManager before measuring this step |
 | `onNext` | `() => void` | — | Called on next |
 | `onPrev` | `() => void` | — | Called on previous |
 | `onSkip` | `() => void` | — | Called on skip |
@@ -662,7 +778,11 @@ const {
 | `skipButtonText` | `string` | `'Skip'` | Skip button label |
 | `doneButtonText` | `string` | `'Done'` | Done button label |
 | `animationDuration` | `number` | `300` | Transition duration (ms) |
-| `motion` | `'morph' \| 'bounce' \| 'fade' \| 'none'` | `'morph'` | Spotlight transition between steps |
+| `motion` | `'morph' \| 'bounce' \| 'fade' \| 'none'` | `'morph'` | Spotlight transition between steps (accepts per-platform values) |
+| `followTarget` | `boolean` | `false` | Highlight tracks the target during free scrolling (needs `useTourScroll`) |
+| `waitForInteractions` | `boolean` | `false` | Wait for navigation/layout animations before measuring each step |
+| `statusBarStyle` | `'light-content' \| 'dark-content' \| 'auto'` | — | Status-bar style while the tour runs (restored after) |
+| `supportedOrientations` | `Orientation[]` | all | iOS Modal orientations (default: rotate with the app) |
 | `tooltipWidth` | `number` | `320` | Tooltip width (px) |
 | `tourId` | `string` | — | Tour identifier (for persistence) |
 | `autoPositionTooltip` | `boolean` | `true` | Flip the tooltip to whichever side has room. Set `false` to always honour each step's `tooltipPosition` |
@@ -697,6 +817,7 @@ const {
 | Property | Type | Default | Description |
 |---|---|---|---|
 | `backgroundColor` | `string` | `'#2C2C2E'` | Tooltip background |
+| `arrowStyle` | `ViewStyle` | — | Style merged onto the tooltip arrow/triangle |
 | `borderRadius` | `number` | `16` | Tooltip corner radius |
 | `titleColor` | `string` | `'#FFFFFF'` | Title text color |
 | `descriptionColor` | `string` | `'#FFFFFF'` | Description text color |

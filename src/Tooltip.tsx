@@ -2,11 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
 
-import type { TourGuideConfig, TooltipProps } from './types';
+import type { ResolvedTourGuideConfig, TooltipProps } from './types';
 import { computeTooltipPosition, isLightColor } from './utils';
 import { getTooltipAccessibilityProps } from './accessibility';
 
-const DEFAULT_CONFIG: TourGuideConfig = {};
+const DEFAULT_CONFIG: ResolvedTourGuideConfig = {};
 
 const DEFAULT_TOOLTIP_WIDTH = 320;
 // Never shrink the body below this, even in a very tight corner — a narrower
@@ -90,6 +90,7 @@ const Tooltip: React.FC<TooltipProps> = ({
     titleStyle: customTitleStyle,
     descriptionStyle: customDescriptionStyle,
     containerStyle: customContainerStyle,
+    arrowStyle: customArrowStyle,
   } = tooltipStylesConfig ?? {};
 
   // Secondary (Back) button text must read against the BUTTON's own
@@ -373,7 +374,7 @@ const Tooltip: React.FC<TooltipProps> = ({
     <View style={[internalStyles.container, placement.style]}>
       <View style={internalStyles.tooltipWrapper}>
         {/* Triangle/Arrow */}
-        <View style={getTriangleStyle()} />
+        <View style={[getTriangleStyle(), customArrowStyle]} />
 
         {/* Tooltip Body */}
         <View

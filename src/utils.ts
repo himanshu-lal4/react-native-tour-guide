@@ -1,7 +1,15 @@
 import { StyleSheet, Platform, StatusBar } from 'react-native';
 import type { ViewStyle } from 'react-native';
 
-import type { EdgeInsets, MeasurableRef, SpotlightTarget } from './types';
+import type {
+  EdgeInsets,
+  MeasurableRef,
+  OSConfig,
+  PerPlatform,
+  ResolvedTourGuideConfig,
+  SpotlightTarget,
+  TourGuideConfig,
+} from './types';
 import { warnOnce } from './dev';
 import type { SpotlightBorderRadius } from './shapes';
 
@@ -328,4 +336,66 @@ export const isLightColor = (color: string): boolean | null => {
   // Perceived brightness (ITU-R BT.601), same scale tinycolor uses: 0-255.
   const brightness = (r * 299 + g * 587 + b * 114) / 1000;
   return brightness > 180;
+};
+
+// ─── Per-platform config values ──────────────────────────────────────────────
+
+const OS_KEYS = new Set(['ios', 'android', 'web', 'default']);
+
+const isOSConfig = (value: unknown): value is OSConfig<unknown> => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  return keys.length > 0 && keys.every((k) => OS_KEYS.has(k));
+};
+
+/**
+ * Resolve a possibly per-platform value for the running OS.
+ * `{ ios: 12, default: 8 }` → 12 on iOS, 8 elsewhere.
+ */
+export const osValue = <T>(value: PerPlatform<T> | undefined): T | undefined => {
+  if (value === undefined || !isOSConfig(value)) return value as T | undefined;
+  const perOS = value as OSConfig<T>;
+  return (perOS as Record<string, T | undefined>)[Platform.OS] ?? perOS.default;
+};
+
+// A typo'd OS key ({ iOS: 320 } or { web: 12, macos: 10 }) makes the object
+// fail the OS-config signature check, so it passes through UNRESOLVED and
+// reaches layout math as a raw object. Diagnose that in dev.
+const warnIfMalformedOSConfig = (field: string, value: unknown): void => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value) || isOSConfig(value)) {
+    return;
+  }
+  const keys = Object.keys(value);
+  // Only flag objects that LOOK like an attempted per-platform value.
+  if (keys.some((k) => OS_KEYS.has(k)) || keys.some((k) => /^(ios|android|web)$/i.test(k))) {
+    warnOnce(
+      `config.${field} looks like a per-platform value but has unrecognised keys (${keys.join(', ')}), so it was not resolved.`,
+      'Use exactly { ios, android, web, default } — lowercase — e.g. { ios: 320, default: 300 }.'
+    );
+  }
+};
+
+/**
+ * Resolve every PerPlatform field of a tour config for the running OS.
+ * Called once in startTour, so everything downstream reads plain values.
+ */
+export const resolvePlatformConfig = (
+  config: TourGuideConfig | undefined
+): ResolvedTourGuideConfig | undefined => {
+  if (!config) return config;
+  warnIfMalformedOSConfig('animationDuration', config.animationDuration);
+  warnIfMalformedOSConfig('motion', config.motion);
+  warnIfMalformedOSConfig('safeZoneOffset', config.safeZoneOffset);
+  warnIfMalformedOSConfig('tooltipWidth', config.tooltipWidth);
+  warnIfMalformedOSConfig('triangleSize', config.triangleSize);
+  warnIfMalformedOSConfig('tooltipOffset', config.tooltipOffset);
+  return {
+    ...config,
+    animationDuration: osValue(config.animationDuration),
+    motion: osValue(config.motion),
+    safeZoneOffset: osValue(config.safeZoneOffset),
+    tooltipWidth: osValue(config.tooltipWidth),
+    triangleSize: osValue(config.triangleSize),
+    tooltipOffset: osValue(config.tooltipOffset),
+  };
 };

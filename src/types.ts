@@ -1,6 +1,8 @@
 import type { RefObject, ReactNode, ComponentType } from 'react';
 import type { ViewStyle, TextStyle, StyleProp } from 'react-native';
 
+import type { TourEvents } from './events';
+
 /**
  * A ref target that can be measured (View-like component).
  * Uses a flexible type to support multiple React Native versions.
@@ -150,7 +152,35 @@ export interface TourStep {
   renderTooltip?: (props: TooltipProps) => ReactNode;
   /** Spotlight transition into this step (overrides config.motion) */
   motion?: SpotlightMotion;
+  /** Wait for InteractionManager before measuring this step (overrides config) */
+  waitForInteractions?: boolean;
+  /**
+   * Keep this step's spotlight punched out of the backdrop after the tour
+   * moves FORWARD past it — "these three things work together" storytelling.
+   * Kept holes are visual only (no pulse, no press pass-through) and are
+   * dropped again when the user navigates back to or before this step.
+   */
+  keepSpotlight?: boolean;
 }
+
+/**
+ * A per-platform value: give each OS its own value, with `default` as the
+ * fallback. Any config field typed `PerPlatform<T>` accepts either a plain
+ * value or one of these.
+ *
+ * @example
+ * tooltipWidth: { ios: 320, android: 300, default: 320 }
+ */
+export interface OSConfig<T> {
+  ios?: T;
+  android?: T;
+  web?: T;
+  /** Used when the current platform has no entry */
+  default?: T;
+}
+
+/** A value that may vary per platform. */
+export type PerPlatform<T> = T | OSConfig<T>;
 
 /**
  * How the spotlight travels between steps:
@@ -233,6 +263,8 @@ export interface TooltipStyles {
   descriptionStyle?: TextStyle;
   /** Custom tooltip container style */
   containerStyle?: ViewStyle;
+  /** Style merged onto the tooltip's arrow/triangle (borders, shadows, overrides) */
+  arrowStyle?: ViewStyle;
 }
 
 /**
@@ -328,14 +360,42 @@ export interface TourGuideConfig {
    *   the full screen; the Android back button is not intercepted in this mode.
    */
   overlayMode?: 'modal' | 'inline';
+  /**
+   * Keep the highlight and tooltip glued to the target while the user scrolls
+   * freely (default: false). Requires wiring your scrollable through
+   * `useTourScroll()` — spread its `scrollProps` onto the ScrollView/FlatList —
+   * so the tour knows when scrolling happens. Position updates are JS-driven
+   * (re-measured per scroll event at ~16ms throttle).
+   */
+  followTarget?: boolean;
   /** Whether tooltip text respects the OS font-size setting (default: true) */
   allowFontScaling?: boolean;
   /** Cap on OS font scaling applied to tooltip text (default: unlimited) */
   maxFontSizeMultiplier?: number;
   /** Animation duration in ms for spotlight transitions (default: 300) */
-  animationDuration?: number;
+  animationDuration?: PerPlatform<number>;
   /** Default spotlight transition between steps (default: 'morph'); steps can override */
-  motion?: SpotlightMotion;
+  motion?: PerPlatform<SpotlightMotion>;
+  /**
+   * Orientations the overlay Modal allows on iOS (default: all). Only relevant
+   * in 'modal' overlay mode; iOS intersects this with the app's own allowed
+   * orientations, so the full-list default simply means "rotate with the app".
+   */
+  supportedOrientations?: Array<
+    'portrait' | 'portrait-upside-down' | 'landscape' | 'landscape-left' | 'landscape-right'
+  >;
+  /**
+   * Wait for `InteractionManager.runAfterInteractions` before measuring each
+   * step (default: false) — lets navigation/layout animations finish first,
+   * without guessing a `delayBefore`. Steps can override.
+   */
+  waitForInteractions?: boolean;
+  /**
+   * Set the status-bar style while the tour is active, restoring it after.
+   * 'auto' picks light-content over a dark backdrop and dark-content over a
+   * light one. Default: leave the status bar alone.
+   */
+  statusBarStyle?: 'light-content' | 'dark-content' | 'auto';
 
   // --- Lifecycle events ---
 
@@ -384,13 +444,13 @@ export interface TourGuideConfig {
    */
   autoPositionTooltip?: boolean;
   /** Safe zone offset in px for scroll calculations (default: 120) */
-  safeZoneOffset?: number;
+  safeZoneOffset?: PerPlatform<number>;
   /** Tooltip width in px (default: 320) */
-  tooltipWidth?: number;
+  tooltipWidth?: PerPlatform<number>;
   /** Triangle/arrow size in px (default: 12) */
-  triangleSize?: number;
+  triangleSize?: PerPlatform<number>;
   /** Gap between target and tooltip in px (default: 8) */
-  tooltipOffset?: number;
+  tooltipOffset?: PerPlatform<number>;
 
   // --- Auto-scroll ---
 
@@ -413,6 +473,29 @@ export interface TourGuideConfig {
 }
 
 /**
+ * `TourGuideConfig` after per-platform (`PerPlatform`) values have been
+ * resolved for the running OS. This is what `startTour` stores and what you
+ * read back from context/`TooltipProps` — always plain values.
+ */
+export interface ResolvedTourGuideConfig
+  extends Omit<
+    TourGuideConfig,
+    | 'animationDuration'
+    | 'motion'
+    | 'safeZoneOffset'
+    | 'tooltipWidth'
+    | 'triangleSize'
+    | 'tooltipOffset'
+  > {
+  animationDuration?: number;
+  motion?: SpotlightMotion;
+  safeZoneOffset?: number;
+  tooltipWidth?: number;
+  triangleSize?: number;
+  tooltipOffset?: number;
+}
+
+/**
  * Props passed to custom tooltip render functions and the built-in tooltip.
  *
  * This is the library's **headless contract**: everything a fully custom
@@ -431,7 +514,7 @@ export interface TooltipProps {
   onSkip: () => void;
   targetHeight?: number;
   targetWidth?: number;
-  config?: TourGuideConfig;
+  config?: ResolvedTourGuideConfig;
   hideNextButton?: boolean;
   hidePrevButton?: boolean;
   hideSkipButton?: boolean;
@@ -468,8 +551,8 @@ export interface TourGuideContextValue {
   steps: TourStep[];
   /** Only active/visible steps (filtered from steps where active !== false) */
   activeSteps: TourStep[];
-  /** Configuration for the tour */
-  config?: TourGuideConfig;
+  /** Configuration for the tour (per-platform values already resolved) */
+  config?: ResolvedTourGuideConfig;
   /**
    * Start a tour: pass a steps array (with optional config), or the id of a
    * tour previously registered with `defineTour` (config then overrides the
@@ -524,6 +607,22 @@ export interface TourGuideContextValue {
   setTargetLayout: (layout: SpotlightTarget | null) => void;
   /** Current target layout */
   targetLayout: SpotlightTarget | null;
+  /**
+   * Lifecycle event subscriptions — the analytics-friendly alternative to
+   * config callbacks. Attach once (e.g. at app root):
+   * `events.on('stepChange', ({ from, to }) => track(...))`.
+   */
+  events: TourEvents;
+  /** @internal Reports a scroll offset from useTourScroll. */
+  __reportScroll?: (y: number) => void;
+  /** @internal Reports momentum-scroll end from useTourScroll. */
+  __reportScrollEnd?: () => void;
+  /** @internal Subscribe to reported scroll offsets. Returns unsubscribe. */
+  __subscribeScroll?: (cb: (y: number) => void) => () => void;
+  /** @internal Subscribe to momentum-scroll-end signals. Returns unsubscribe. */
+  __subscribeScrollEnd?: (cb: () => void) => () => void;
+  /** @internal Last scroll offset reported through useTourScroll, if any. */
+  __getTrackedScrollY?: () => number | undefined;
   /**
    * Registers a mounted `<TourGuideOverlay />` so the provider can warn (in dev)
    * when no overlay — or more than one — is mounted. Returns its cleanup.
