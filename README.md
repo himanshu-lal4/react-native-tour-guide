@@ -14,18 +14,12 @@ Works with Expo and React Native CLI. Zero native dependencies. New Architecture
 
 📚 **[Documentation & guides](https://himanshu-lal4.github.io/react-native-tour-guide/)** · 📦 **[Install from npm](https://www.npmjs.com/package/@wrack/react-native-tour-guide)**
 
-<table>
-  <tr>
-    <td align="center">
-      <img src="https://raw.githubusercontent.com/himanshu-lal4/react-native-tour-guide/main/IOSDemo.gif" alt="iOS tour guide demo showing spotlight walkthrough" width="300" />
-      <br /><sub><b>iOS</b></sub>
-    </td>
-    <td align="center">
-      <img src="https://raw.githubusercontent.com/himanshu-lal4/react-native-tour-guide/main/AndroidDemo.gif" alt="Android tour guide demo showing spotlight walkthrough" width="300" />
-      <br /><sub><b>Android</b></sub>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/himanshu-lal4/react-native-tour-guide/main/IOSDemo.gif" alt="React Native tour guide demo — auto shape-matching spotlight, interactive steps, auto-scroll, and safe-area-aware tooltips" width="420" />
+</p>
+<p align="center">
+  <sub>Shape-matched spotlights, tap-through interactive steps, auto-scroll, and edge-aware tooltips — same rendering on iOS and Android.</sub>
+</p>
 
 ---
 
@@ -65,6 +59,19 @@ pnpm add @wrack/react-native-tour-guide react-native-svg
 # Expo (managed or bare)
 npx expo install @wrack/react-native-tour-guide react-native-svg
 ```
+
+### Requirements
+
+| | Minimum |
+|---|---|
+| `react-native` | 0.71 |
+| `react` | 18 |
+| `react-native-svg` | 13 |
+| `react-native-web` (web only) | 0.19 |
+
+Works on the old architecture and the New Architecture (Fabric), on iOS, Android
+and web. `react-native-safe-area-context` is optional — when installed, safe-area
+insets are detected automatically.
 
 ### Optional dependencies
 
@@ -151,6 +158,185 @@ That's it. The spotlight around the button will have 12px rounded corners. The s
 
 ---
 
+## Declarative targeting with TourTarget
+
+Skip ref-threading entirely: wrap any element in a `TourTarget` and reference it
+from steps by id. The wrapper registers itself with the provider (and uses
+`collapsable={false}` so Android's view flattening can never make the target
+unmeasurable).
+
+```tsx
+import { TourTarget, useTourGuide } from '@wrack/react-native-tour-guide';
+
+<TourTarget id="compose" style={{ borderRadius: 24 }}>
+  <ComposeButton />
+</TourTarget>;
+
+// Steps reference the id — no refs anywhere:
+startTour([
+  { id: 'step1', targetId: 'compose', title: 'Compose', description: 'Start a new message.' },
+]);
+```
+
+The `style` on `TourTarget` drives spotlight shape matching, exactly like a
+step's `targetStyle`. If the target mounts after the tour starts (a screen you
+navigate to), the tour waits briefly for it to register before falling back to
+a centered tooltip. `targetRef` still works everywhere and wins when both are
+given.
+
+---
+
+## Interactive steps — let users tap the real thing
+
+By default the overlay uses a Modal, which swallows every touch. Switch to the
+inline overlay and mark a step `interactive` to let touches pass through the
+spotlight hole to the actual element underneath:
+
+```tsx
+startTour(
+  [
+    {
+      id: 'send',
+      targetId: 'send-button',
+      title: 'Try it now',
+      description: 'Tap Send to continue.',
+      interactive: true,   // touches reach the real button
+      hideNextButton: true,
+      completed: false,    // Next stays disabled until you say so
+    },
+  ],
+  { overlayMode: 'inline' }
+);
+
+// In the button's own handler:
+const { nextStep, setStepCompleted } = useTourGuide();
+const onSend = () => {
+  setStepCompleted('send', true);
+  nextStep();
+};
+```
+
+- `overlayMode: 'inline'` renders the overlay as an absolutely-positioned layer
+  instead of a Modal. Put `<TourGuideOverlay />` at the root of your app so it
+  covers the full screen. (The Android back button is not intercepted in this
+  mode.)
+- `completed: false` disables the Next button until
+  `setStepCompleted(stepId, true)` is called — turn a slideshow into a guided
+  task.
+
+---
+
+## Async step preparation with before()
+
+Navigate, open a sheet, or wait for data before a step is measured — the
+spotlight only appears once the promise resolves. Prefer this over guessing a
+`delayBefore`:
+
+```tsx
+{
+  id: 'profile-tab',
+  targetId: 'profile-header',
+  title: 'Your profile',
+  description: 'Everything about you lives here.',
+  before: async () => {
+    navigation.navigate('Profile');
+    await waitForProfileToLoad();
+  },
+}
+```
+
+If `before()` throws or rejects, the tour warns (dev only) and shows the step
+anyway rather than trapping the user.
+
+---
+
+## Named tours and canStartTour
+
+Register tours up front and start them by id from anywhere — useful when steps
+and triggers live in different parts of the app:
+
+```tsx
+const { defineTour, startTour, canStartTour } = useTourGuide();
+
+// At setup time (e.g. app root):
+defineTour('onboarding', onboardingSteps, { showProgressDots: true });
+defineTour('power-features', powerSteps);
+
+// Anywhere else:
+startTour('onboarding');                       // stored config
+startTour('onboarding', { motion: 'bounce' }); // with overrides
+
+// Wait until every <TourTarget> the tour references has mounted:
+if (canStartTour('onboarding')) startTour('onboarding');
+```
+
+`canStartTour` also accepts a raw steps array. Steps with `targetRef`,
+`targetRegion`, or no target always count as ready.
+
+---
+
+## Highlighting a region without a ref
+
+Maps, camera previews, canvases — anything you can't attach a ref to — can be
+highlighted as a fixed window rectangle:
+
+```tsx
+{
+  id: 'map-pin',
+  targetRegion: { x: 40, y: 220, width: 320, height: 180 },
+  title: 'Your delivery zone',
+  description: 'Everything inside this area ships free.',
+}
+```
+
+`targetRegion` skips measurement entirely and wins over `targetRef`/`targetId`.
+
+---
+
+## Spotlight motion presets
+
+Choose how the spotlight travels between steps — globally or per step:
+
+```tsx
+startTour(steps, { motion: 'bounce' });          // springy, with overshoot
+// per step:
+{ id: 'step3', targetId: 'send', motion: 'fade', ... }
+```
+
+| Motion | Behaviour |
+|---|---|
+| `morph` (default) | Position, size and radius tween in one smooth move |
+| `bounce` | The same move on a spring |
+| `fade` | The overlay dips out, jumps, and fades back in |
+| `none` | Instant jump |
+
+---
+
+## Custom spotlight shapes with maskPath
+
+The ultimate escape hatch: return any SVG subpath and it becomes the hole in
+the backdrop (evenodd fill). Overrides shape matching for every step:
+
+```tsx
+startTour(steps, {
+  spotlightStyles: {
+    // A star, a blob, an arrow — anything you can path:
+    maskPath: ({ bounds }) => {
+      const { x, y, width: w, height: h } = bounds;
+      const cx = x + w / 2;
+      return `M${cx},${y} L${x + w},${y + h} L${x},${y + h} Z`; // triangle
+    },
+  },
+});
+```
+
+The function receives the measured `target`, the padded `bounds` the automatic
+shape would use, and the screen size. Custom paths jump between steps (arbitrary
+paths can't be tweened reliably); a throwing `maskPath` falls back to the
+automatic shape.
+
+---
+
 ## How does auto shape matching work?
 
 Pass the same style you use on the component as `targetStyle` on the step. The library reads the `borderRadius` properties from that style and applies them to the spotlight.
@@ -185,7 +371,7 @@ Priority: `spotlightBorderRadius` > auto-extracted from `targetStyle` > default 
 
 ## How to enable auto-scroll?
 
-Set `scrollRef` on the tour config. The library automatically scrolls to ensure both the target and its tooltip are fully visible.
+Set `scrollRef` on the tour config. The library automatically scrolls to ensure both the target and its tooltip are fully visible. `getCurrentScrollOffset` is optional — without it the destination is derived from the target's position inside the scroll content (`measureLayout`), which needs no offset tracking at all. Pass the getter only if you want the offset-based calculation.
 
 ```tsx
 const scrollViewRef = useRef(null);
@@ -205,6 +391,32 @@ startTour(steps, {
   {/* your content */}
 </ScrollView>
 ```
+
+This works with `ScrollView`, `FlatList`, `SectionList`, `Animated.ScrollView` and
+gesture-handler wrappers — the library detects each one's scroll method, so you
+pass the ref the same way regardless:
+
+```tsx
+const listRef = useRef(null);
+const [scrollY, setScrollY] = useState(0);
+
+startTour(steps, {
+  scrollRef: listRef,              // FlatList works exactly like ScrollView
+  getCurrentScrollOffset: () => scrollY,
+});
+
+<FlatList
+  ref={listRef}
+  onScroll={(e) => setScrollY(e.nativeEvent.contentOffset.y)}
+  scrollEventThrottle={16}
+  data={data}
+  renderItem={renderItem}
+/>
+```
+
+> Attach the ref to the list itself, not to a wrapping `View`. If the ref has no
+> scroll method the tour warns in development and highlights the target where it
+> is, rather than scrolling.
 
 You can also set `scrollToTarget` per step for fine-grained control:
 
@@ -403,17 +615,24 @@ const {
 |---|---|---|---|
 | `id` | `string` | required | Unique step identifier |
 | `targetRef` | `RefObject` | — | Ref to the component to highlight |
+| `targetId` | `string` | — | Id of a `<TourTarget>` to highlight — the ref-free alternative |
+| `targetRegion` | `{x, y, width, height}` | — | Highlight a fixed window rectangle (no ref needed); wins over targetRef/targetId |
 | `title` | `string` | required | Tooltip title |
 | `description` | `string` | required | Tooltip body text |
 | `tooltipPosition` | `'top' \| 'bottom' \| 'left' \| 'right' \| 'auto'` | `'auto'` | Tooltip placement (auto-detected by default) |
 | `targetStyle` | `ViewStyle` | — | Style to extract border radius from for shape matching |
-| `spotlightPadding` | `number` | `0` | Extra padding around the spotlight |
+| `spotlightPadding` | `number \| {top,right,bottom,left}` | `0` | Padding around the spotlight — uniform or per-side |
 | `spotlightBorderRadius` | `number` | — | Override border radius (takes priority over targetStyle) |
 | `scrollToTarget` | `ScrollToTargetConfig` | — | Per-step scroll configuration |
 | `active` | `boolean` | `true` | Whether this step is included |
 | `backdropBehavior` | `BackdropBehavior` | `'none'` | What happens on backdrop tap |
 | `autoAdvance` | `number` | `0` | Auto-advance after ms (0 = disabled) |
+| `before` | `() => void \| Promise<void>` | — | Awaited before the step is measured — navigate/fetch here |
 | `delayBefore` | `number` | `0` | Delay before showing step |
+| `completed` | `boolean` | — | `false` disables Next until `setStepCompleted(id, true)` |
+| `interactive` | `boolean` | `false` | Let touches through the spotlight to the real element (inline mode) |
+| `renderTooltip` | `(props) => ReactNode` | — | Per-step custom tooltip (overrides the config one) |
+| `motion` | `'morph' \| 'bounce' \| 'fade' \| 'none'` | config | Spotlight transition into this step |
 | `onNext` | `() => void` | — | Called on next |
 | `onPrev` | `() => void` | — | Called on previous |
 | `onSkip` | `() => void` | — | Called on skip |
@@ -429,8 +648,12 @@ const {
 |---|---|---|---|
 | `tooltipStyles` | `TooltipStyles` | — | Tooltip appearance |
 | `spotlightStyles` | `SpotlightStyles` | — | Spotlight/overlay appearance |
-| `scrollRef` | `RefObject` | — | ScrollView ref for auto-scrolling |
-| `getCurrentScrollOffset` | `() => number` | — | Returns current scroll Y position |
+| `scrollRef` | `RefObject` | — | Ref to the `ScrollView`, `FlatList` or `SectionList` to auto-scroll |
+| `getCurrentScrollOffset` | `() => number` | — | Optional scroll-offset getter; without it the destination is derived via `measureLayout` |
+| `overlayMode` | `'modal' \| 'inline'` | `'modal'` | `'inline'` renders without a Modal — required for `interactive` steps |
+| `components` | `TooltipComponents` | — | Replace individual tooltip pieces (NextButton, SkipButton, dots…) |
+| `allowFontScaling` | `boolean` | `true` | Tooltip text follows the OS font-size setting |
+| `maxFontSizeMultiplier` | `number` | — | Cap on OS font scaling for tooltip text |
 | `showProgressDots` | `boolean` | `false` | Show dot indicators |
 | `showStepCounter` | `boolean` | `true` | Show "1/5" counter |
 | `enableBackButton` | `boolean` | `true` | Show back button |
@@ -439,15 +662,16 @@ const {
 | `skipButtonText` | `string` | `'Skip'` | Skip button label |
 | `doneButtonText` | `string` | `'Done'` | Done button label |
 | `animationDuration` | `number` | `300` | Transition duration (ms) |
+| `motion` | `'morph' \| 'bounce' \| 'fade' \| 'none'` | `'morph'` | Spotlight transition between steps |
 | `tooltipWidth` | `number` | `320` | Tooltip width (px) |
 | `tourId` | `string` | — | Tour identifier (for persistence) |
-| `autoPositionTooltip` | `boolean` | — | Enable smart positioning |
+| `autoPositionTooltip` | `boolean` | `true` | Flip the tooltip to whichever side has room. Set `false` to always honour each step's `tooltipPosition` |
 | `defaultBackdropBehavior` | `BackdropBehavior` | `'none'` | Global backdrop behavior |
 | `renderTooltip` | `(props) => ReactNode` | — | Custom tooltip renderer |
 | `onTourStart` | `() => void` | — | Called when tour starts |
 | `onTourEnd` | `(completed: boolean) => void` | — | Called when tour ends |
 | `onStepChange` | `(from, to) => void` | — | Called on step change |
-| `beforeStepChange` | `(from, to) => boolean \| Promise<boolean>` | — | Gate before step change |
+| `beforeStepChange` | `(from, to) => boolean \| Promise<boolean>` | — | Gate before step change. Return `false` to block it. On the final step `to` is `totalSteps` (one past the end), so `to > from` stays true when finishing |
 | `enableAccessibility` | `boolean` | `true` | Enable screen reader announcements |
 
 ### SpotlightStyles
@@ -456,6 +680,7 @@ const {
 |---|---|---|---|
 | `overlayOpacity` | `number` | `0.6` | Overlay darkness (0-1) |
 | `overlayColor` | `string` | `'black'` | Overlay color |
+| `maskPath` | `(args) => string` | — | Custom SVG subpath for the spotlight hole — draw any shape |
 | `enableBlur` | `boolean` | `false` | Blur effect (requires optional dep) |
 | `blurAmount` | `number` | `4` | Blur intensity |
 | `enableGradient` | `boolean` | `false` | Gradient overlay |
@@ -484,19 +709,34 @@ const {
 
 ## Troubleshooting
 
-**Tour not showing?**
-- Ensure `TourGuideOverlay` is placed after your main content inside the provider
-- Check that the target ref is attached to a mounted component
-- Add `delayBefore: 500` if the component needs time to render
+In development the library validates your steps and config on every `startTour()`
+and prints a warning naming the exact step and the fix. All warnings are stripped
+from production builds, so check the Metro logs first — the answer is usually
+there. Common cases:
 
-**Spotlight position wrong?**
-- The component must be visible on screen when measured
-- Check for transforms or absolute positioning that might affect measurement
-- Use `scrollRef` on the config to ensure off-screen elements are scrolled into view
+**Tour not showing at all?**
+- Render `<TourGuideOverlay />` exactly once, inside `<TourGuideProvider>` and after your main content. Calling `startTour()` with no overlay mounted warns: *"the tour is running invisibly"*.
+- Check that every step is not `active: false` — a tour with no active steps does not start.
+- Add `delayBefore: 500` to a step whose component needs time to render.
 
-**Tooltip overlapping target?**
-- Set `tooltipPosition: 'auto'` (default) for automatic placement
-- The library checks available space on all sides and picks the best position
+**Spotlight in the wrong place, or a centered tooltip instead of a spotlight?**
+- The target must be a React Native host component (`View`, `Text`, `Pressable`…). A custom component must forward the ref with `React.forwardRef`, or there is nothing to measure and the step falls back to a centered tooltip.
+- Pass the ref itself (`targetRef={myRef}`), not `myRef.current` and not a callback ref.
+- The component must be laid out when measured — use `scrollRef` so off-screen targets are scrolled into view.
+
+**Auto-scroll not working?**
+- Attach `scrollRef` to the scrollable itself, not a wrapper `View`.
+- Pass `getCurrentScrollOffset` as well. Without it the tour assumes the list sits at offset 0 and scrolls to the wrong place once the user has scrolled.
+
+**Tooltip overlapping the target or running off-screen?**
+- Leave `autoPositionTooltip` at its default (`true`) so the tooltip flips to whichever side has room.
+- Pass `insets` (from `useSafeAreaInsets()`) and `extraInsets` for tab bars and headers so the tooltip stays clear of system chrome.
+
+**The Done button does nothing on the last step?**
+- If you use `beforeStepChange`, remember `to` is `totalSteps` on the final step. A guard that only allows known indices will block finishing.
+
+**Nothing happens when I tap Next?**
+- A `beforeStepChange` promise that never settles holds the transition lock. Make sure it always resolves.
 
 ---
 
@@ -537,11 +777,15 @@ Yes. The dark overlay is drawn with a single even-odd SVG path (a real punched-o
 
 ### Does it work with `ScrollView`, `FlatList`, and `SectionList`?
 
-Yes. Pass a `scrollRef` (and a `getCurrentScrollOffset` getter) on the config and the tour scrolls off-screen targets into view automatically, keeping both the target and its tooltip on screen.
+Yes. Pass a `scrollRef` (and a `getCurrentScrollOffset` getter) on the config and the tour scrolls off-screen targets into view automatically, keeping both the target and its tooltip on screen. Each scrollable exposes a different imperative API — `scrollTo` on `ScrollView`, `scrollToOffset` on `FlatList`, a scroll responder on `SectionList` — and the library detects the right one, including `Animated.ScrollView` and gesture-handler wrappers.
 
 ### What are the dependencies and bundle size?
 
 The library itself is under 50KB and has **zero native dependencies** — only `react-native-svg` as a peer. Blur and gradient effects are fully optional and load lazily only if you install them, degrading gracefully to the standard overlay otherwise.
+
+### Does it work with Jest?
+
+Yes, with no extra configuration. The package ships both a CommonJS and an ES module build with the right `require`/`import` export conditions, so it resolves correctly under the `react-native` Jest preset without adding it to `transformIgnorePatterns`.
 
 ### Is it written in TypeScript?
 

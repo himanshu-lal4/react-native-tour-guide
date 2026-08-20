@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Stability, compatibility and diagnostics pass, plus the declarative / headless / interactive API expansion. No breaking changes to the JS API — but note one **install-time breaking change**: peer dependency ranges were narrowed from `react: *` / `react-native: *` to `react >=18` / `react-native >=0.71` (the code has required these all along — e.g. `gap` styles — so the old ranges were dishonest, not permissive). Apps on older React/RN will now get an install error instead of a runtime break. **Ship this as a major version bump.**
+
+### Added — orchestration & spotlight control
+
+- **Named tours** — `defineTour(id, steps, config)` registers tours up front; `startTour('id')` starts them from anywhere (with optional config overrides merged over the stored config); `removeTour(id)` unregisters.
+- **`canStartTour(idOrSteps)`** — true once every `targetId` a tour references has its `<TourTarget>` registered, so tours can be started exactly when async screens are ready.
+- **`targetRegion`** — highlight a fixed window rectangle with no ref at all (maps, camera views, canvases). Skips measurement entirely.
+- **Motion presets** — `motion: 'morph' | 'bounce' | 'fade' | 'none'` on the config or per step controls how the spotlight travels between steps.
+- **`spotlightStyles.maskPath`** — return any SVG subpath and it becomes the spotlight hole; the escape hatch for arbitrary highlight shapes. A throwing function falls back to the automatic shape.
+
+### Changed — performance
+
+- **No more per-frame re-renders during spotlight transitions** — path data is written straight to the native SVG nodes via `setNativeProps` while animating (state is committed once at the end); falls back to state updates where unavailable. Invisible on a flagship, very visible on a low-end Android.
+
+### Added — declarative & headless API
+
+- **`<TourTarget id="...">`** — declaratively mark tour targets by wrapping them; steps reference them via `targetId` instead of threading refs. The wrapper sets `collapsable={false}` (so Android view flattening can't produce an unmeasurable 0×0 target) and its `style` drives spotlight shape matching. Targets that mount after the tour starts are waited for briefly before falling back to a centered tooltip.
+- **Interactive steps** — `overlayMode: 'inline'` renders the overlay without a Modal, and `interactive: true` on a step leaves the spotlight hole touch-transparent so users can tap the real element being highlighted. Backdrop taps still work via press bands around the hole.
+- **Progress gating** — `completed: false` on a step disables the Next button until `setStepCompleted(stepId, true)` is called; pair with `hideSkipButton` for required steps.
+- **`before()` per step** — an awaited hook that runs before the step is measured: navigate, open a sheet, or fetch, and the spotlight only appears once it resolves. Errors warn (dev only) and the step still shows.
+- **Component slots** — `config.components` accepts `NextButton`, `PrevButton`, `SkipButton`, `StepCounter` and `ProgressDots` replacements so one piece can be restyled without rebuilding the whole tooltip.
+- **Per-step `renderTooltip`** — overrides the config-level renderer for a single step.
+- **`TooltipProps` is documented as the stable headless contract**, now including `nextDisabled` and `isLastStep`.
+- **Per-side `spotlightPadding`** — `{ top, right, bottom, left }` in addition to a uniform number.
+- **`allowFontScaling` / `maxFontSizeMultiplier`** config for tooltip text.
+
+### Fixed — additional hardening
+
+- **`getCurrentScrollOffset` is now optional** — without it the auto-scroll destination is derived from the target's position inside the scroll content via `measureLayout`, eliminating the silent mis-scroll when the getter was forgotten.
+- **Measurement watchdog** — if a target's measure callback never fires at all (detached nodes, exotic hosts), the step now falls back to a centered tooltip after a grace period instead of trapping the user behind the backdrop indefinitely.
+- **Readable-by-default tooltips** — when a custom `tooltipStyles.backgroundColor` is light, default title/description/skip colors flip to dark automatically instead of rendering invisible white-on-white.
+- **Shrink-to-fit tooltips** — the tooltip body is capped to the space inside the safe-area insets and long descriptions scroll inside it instead of running off-screen.
+
+
+### Fixed
+
+- **`FlatList` / `SectionList` auto-scroll crashed** — auto-scroll called `scrollTo()` on whatever `scrollRef` it was given, which only `ScrollView` implements. Passing a `FlatList` ref (documented as supported) threw `scrollTo is not a function`. Scrolling now detects the right method per scrollable: `scrollTo`, `scrollToOffset`, `getScrollResponder()`, `getScrollRef()`, `getNode()` and `scrollToPosition`, covering `ScrollView`, `FlatList`, `SectionList`, `Animated.ScrollView`, gesture-handler wrappers and `KeyboardAwareScrollView`. An unusable ref now warns and highlights the target in place instead of failing the step.
+- **Users could get trapped behind the backdrop** — if a `targetRef` pointed at something with no measurement API (a custom component that doesn't forward its ref), the measurement callback never fired, so the overlay stayed up with no tooltip and, with the default `backdropBehavior: 'none'`, no way to dismiss it. Unmeasurable targets now fall back to a centered tooltip and explain why.
+- **`measureInWindow` could throw** on a ref whose `.current` became null mid-measurement.
+- **`autoAdvance` and screen-reader announcements never ran on centered steps** — both were gated on a measured target, which centered/no-target steps never have.
+- **`beforeStepChange` blocked the Done button** — on the final step it was called with `to === from`, so a natural guard like `(from, to) => to > from` silently prevented the tour from ever finishing. It now receives `to === totalSteps` (one past the end).
+- **`goToStep()` skipped `onStepChange`** — programmatic jumps were invisible to analytics and progress tracking. It now fires the event, ignores same-index jumps, and validates non-integer indices.
+- **A stuck transition could permanently disable navigation** — a `beforeStepChange` promise that never settled left the lock engaged for every subsequent tour. `startTour()` now releases it.
+- **Side tooltips ran off-screen** — `tooltipPosition: 'left' | 'right'` had no horizontal clamping, so a target near a screen edge pushed the tooltip partly or entirely out of view. Side placements are now clamped within the safe-area insets and shrink to fit.
+- **The tooltip's own auto-positioning ignored safe-area insets**, so it could place itself under the status bar or behind the home indicator.
+- **The Android navigation bar was covered inconsistently** — `navigationBarTranslucent` was set only when using a custom `renderTooltip`. Both paths now render through one `Modal`.
+- Storage failures in `useTourPersistence` no longer surface as unhandled promise rejections, and a failed read no longer prevents the tour from showing.
+
+### Added
+
+- **Dev-time validation on every `startTour()`** — reports duplicate or missing step ids, empty titles/descriptions, a `targetRef` that isn't a ref object, invalid `tooltipPosition` values, negative padding, unreadably short `autoAdvance`, a `scrollRef` that isn't a ref, a missing `getCurrentScrollOffset`, and steps that hide every way to continue. Each warning names the step and the fix.
+- **Integration diagnostics** — starting a tour with no `<TourGuideOverlay />` mounted, or with more than one, now warns instead of silently rendering nothing.
+- **CommonJS build** alongside the ESM build, with `require`/`import` export conditions and per-format type definitions. `require()` and consumer Jest setups now work without extra configuration.
+
+### Changed
+
+- **Warnings are stripped from production builds** and de-duplicated in development, so they no longer reach consumers' release logs.
+- **Honest peer-dependency ranges** — `react-native: >=0.71`, `react: >=18` (previously `*`, which claimed support for every version ever released). Optional peers (`react-native-safe-area-context`, blur, gradient, masked-view) are now declared properly rather than listed in `peerDependenciesMeta` with no matching entry.
+- `autoPositionTooltip` is documented as defaulting to `true` (matching long-standing behaviour), and setting it to `false` now fully honours each step's explicit `tooltipPosition`.
+- Example type definitions are no longer emitted into the published build.
+
+---
+
 ## [1.0.1] - 2026-06-27
 
 ### Changed
@@ -92,9 +157,7 @@ First stable release — a production-ready tour-guide toolkit for React Native 
 
 ---
 
-## [Unreleased]
-
-### Planned
+## Planned
 
 - [ ] Gesture-based navigation (swipe between steps)
 - [ ] Video/GIF support in tooltips

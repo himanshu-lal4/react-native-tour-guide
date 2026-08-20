@@ -4,7 +4,7 @@
 
 ## What it does
 
-You define a list of steps — which component to highlight (via a ref) and what text to show — then call `startTour(steps, config)`. The library measures each target, dims the rest of the screen with a spotlight cutout, positions a tooltip, auto-scrolls off-screen targets into view, and animates between steps.
+You define a list of steps — which component to highlight (via a `<TourTarget id>` wrapper or a ref) and what text to show — then call `startTour(steps, config)`. The library measures each target, dims the rest of the screen with a spotlight cutout, positions a tooltip, auto-scrolls off-screen targets into view, and animates between steps. It is designed as a headless-friendly tour ENGINE: teams keep the measurement/scrolling/placement/sequencing engine and bring their own design-system UI via component slots or a fully custom tooltip.
 
 ## Key features
 
@@ -13,7 +13,14 @@ You define a list of steps — which component to highlight (via a ref) and what
 - Smart tooltip positioning: auto-detects the best side (top/bottom/left/right) and clamps within safe-area insets so it never renders off-screen.
 - Theming: built-in themes plus a `createTheme()` API; fully customizable tooltip via `renderTooltip`.
 - Pulse animation, backdrop-tap behavior, conditional steps, pause/resume, auto-advance, and "show only once" persistence (`useTourPersistence`).
-- Accessibility: screen-reader announcements (VoiceOver/TalkBack) enabled by default.
+- Accessibility: screen-reader announcements (VoiceOver/TalkBack) enabled by default; tooltip text follows the OS font-size setting.
+- Declarative targeting: wrap any element in `<TourTarget id="x">` and reference it from steps with `targetId: 'x'` — no ref threading; handles Android view flattening (`collapsable={false}`) and targets that mount after the tour starts.
+- Bring-your-own-UI (headless): `renderTooltip` (global or per step) receives the stable `TooltipProps` contract (geometry, resolved placement, insets, progress, callbacks); `config.components` slots replace just `NextButton`/`PrevButton`/`SkipButton`/`StepCounter`/`ProgressDots`.
+- Interactive steps: `overlayMode: 'inline'` + `interactive: true` lets users tap the real highlighted element through the spotlight; `completed: false` + `setStepCompleted()` gates Next until they do.
+- `before()` per step: an awaited hook to navigate/fetch before the step is measured (better than guessing a delay).
+- Named tours: `defineTour(id, steps, config)` + `startTour('id')` + `canStartTour(id)` (ready once all referenced TourTargets have registered); `targetRegion` highlights a fixed rectangle with no ref (maps, camera views); motion presets `'morph' | 'bounce' | 'fade' | 'none'`; `spotlightStyles.maskPath` draws any custom SVG cutout shape.
+- Auto-scroll works without any offset tracking: destination is derived via `measureLayout`; `getCurrentScrollOffset` is optional.
+- Robustness: dev-time validation of steps/config with actionable warnings (stripped in production), a measurement watchdog so a target that can never be measured falls back to a centered tooltip instead of trapping the user, and contrast-derived tooltip text so custom light backgrounds never render invisible white text.
 
 ## Installation
 

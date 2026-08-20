@@ -1,4 +1,20 @@
-import type { SpotlightTarget } from './types';
+import type { EdgeInsets, SpotlightTarget } from './types';
+
+/** Padding around the spotlight: uniform number or per-side values. */
+export type SpotlightPadding = number | Partial<EdgeInsets>;
+
+/** Resolve a SpotlightPadding to explicit per-side values. */
+export const resolvePadding = (padding: SpotlightPadding | undefined): EdgeInsets => {
+  if (typeof padding === 'number') {
+    return { top: padding, right: padding, bottom: padding, left: padding };
+  }
+  return {
+    top: padding?.top ?? 0,
+    right: padding?.right ?? 0,
+    bottom: padding?.bottom ?? 0,
+    left: padding?.left ?? 0,
+  };
+};
 
 /**
  * Internal type for border radius — number for uniform, object for per-corner.
@@ -42,11 +58,11 @@ export type ShapeResult = RectShapeResult | PathShapeResult;
 
 // --- Rect bounds computation ---
 
-const computeRectBounds = (target: SpotlightTarget, padding: number) => ({
-  x: target.x - padding,
-  y: target.y - padding,
-  width: target.width + padding * 2,
-  height: target.height + padding * 2,
+const computeRectBounds = (target: SpotlightTarget, padding: EdgeInsets) => ({
+  x: target.x - padding.left,
+  y: target.y - padding.top,
+  width: target.width + padding.left + padding.right,
+  height: target.height + padding.top + padding.bottom,
 });
 
 // --- Rounded rect with per-corner radii ---
@@ -112,20 +128,24 @@ const adjustRadius = (
  */
 export const computeShape = (
   target: SpotlightTarget,
-  padding: number,
+  padding: SpotlightPadding = 0,
   customBorderRadius?: SpotlightBorderRadius
 ): ShapeResult => {
-  const { x, y, width, height } = computeRectBounds(target, padding);
+  const pad = resolvePadding(padding);
+  const { x, y, width, height } = computeRectBounds(target, pad);
+  // For radius scaling, treat the average per-axis padding as the uniform
+  // equivalent — exact for uniform padding, sensible for per-side.
+  const padScale = Math.max((pad.left + pad.right) / 2, (pad.top + pad.bottom) / 2);
 
   // Per-corner border radius → generate path with individual corner arcs
   if (typeof customBorderRadius === 'object' && customBorderRadius !== null) {
     const { topLeft = 0, topRight = 0, bottomRight = 0, bottomLeft = 0 } = customBorderRadius;
 
     // Scale each corner
-    const sTL = adjustRadius(topLeft, target.width, target.height, padding);
-    const sTR = adjustRadius(topRight, target.width, target.height, padding);
-    const sBR = adjustRadius(bottomRight, target.width, target.height, padding);
-    const sBL = adjustRadius(bottomLeft, target.width, target.height, padding);
+    const sTL = adjustRadius(topLeft, target.width, target.height, padScale);
+    const sTR = adjustRadius(topRight, target.width, target.height, padScale);
+    const sBR = adjustRadius(bottomRight, target.width, target.height, padScale);
+    const sBL = adjustRadius(bottomLeft, target.width, target.height, padScale);
 
     // If all corners are the same, use rect for smooth animation
     if (sTL === sTR && sTR === sBR && sBR === sBL) {
@@ -138,6 +158,6 @@ export const computeShape = (
   }
 
   const br = typeof customBorderRadius === 'number' ? customBorderRadius : 12;
-  const scaledBr = adjustRadius(br, target.width, target.height, padding);
+  const scaledBr = adjustRadius(br, target.width, target.height, padScale);
   return { kind: 'rect', x, y, width, height, rx: scaledBr, ry: scaledBr };
 };

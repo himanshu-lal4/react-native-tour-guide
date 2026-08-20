@@ -1,0 +1,7 @@
+# Generated native projects (Expo prebuild / CNG) — used only for local demo
+# recordings via `expo run:ios`; regenerate with `npx expo prebuild`.
+/ios
+/android
+# Expo
+.expo/
+web-build/

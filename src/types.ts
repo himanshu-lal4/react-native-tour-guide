@@ -1,4 +1,4 @@
-import type { RefObject, ReactNode } from 'react';
+import type { RefObject, ReactNode, ComponentType } from 'react';
 import type { ViewStyle, TextStyle, StyleProp } from 'react-native';
 
 /**
@@ -71,14 +71,29 @@ export interface TourStep {
   id: string;
   /** Reference to the component to highlight (optional for full-screen tooltips) */
   targetRef?: MeasurableRef;
+  /**
+   * ID of a `<TourTarget>` to highlight — the declarative alternative to
+   * `targetRef`. The tour waits briefly for the target to register (useful when
+   * the screen mounts after the tour starts). If both are given, `targetRef`
+   * wins.
+   */
+  targetId?: string;
+  /**
+   * Highlight a fixed screen region instead of a component — for map overlays,
+   * camera views, canvases, or anything you can't attach a ref to. Uses the
+   * same coordinate space as `measureInWindow` (the library applies the same
+   * Android status-bar correction it applies to measured targets). Skips
+   * measurement entirely; wins over targetRef/targetId.
+   */
+  targetRegion?: SpotlightTarget;
   /** Title shown in the tooltip */
   title: string;
   /** Description text in the tooltip */
   description: string;
   /** Position of the tooltip relative to the target (default: 'bottom', use 'auto' for smart positioning) */
   tooltipPosition?: 'top' | 'bottom' | 'left' | 'right' | 'auto';
-  /** Custom padding around spotlight in pixels (default: 0) */
-  spotlightPadding?: number;
+  /** Padding around the spotlight in px — a number for uniform padding, or per-side values (default: 0) */
+  spotlightPadding?: number | Partial<EdgeInsets>;
   /** Uniform border radius override for the spotlight (default: 12). For per-corner control, use targetStyle instead. */
   spotlightBorderRadius?: number;
   /** Style applied to the target component — border radius is auto-extracted for spotlight shape matching */
@@ -97,6 +112,12 @@ export interface TourStep {
   backdropBehavior?: BackdropBehavior;
   /** Callback when the spotlight area is pressed */
   onSpotlightPress?: () => void;
+  /**
+   * Awaited before this step is measured and shown. Navigate, open a sheet, or
+   * wait for data here — the spotlight only appears once the promise resolves.
+   * Prefer this over guessing a `delayBefore`.
+   */
+  before?: () => void | Promise<void>;
   /** Delay in ms before showing this step (useful for waiting on animations) */
   delayBefore?: number;
   /** Auto-advance to next step after this many ms (0 = disabled) */
@@ -109,6 +130,81 @@ export interface TourStep {
   hideSkipButton?: boolean;
   /** Custom accessibility label for this step (overrides auto-generated one) */
   accessibilityLabel?: string;
+  /**
+   * Gates progression: `false` disables the Next button, pauses `autoAdvance`,
+   * and turns a `backdropBehavior: 'next'` tap into a no-op until
+   * `setStepCompleted(id, true)` is called (e.g. after the user performs the
+   * action this step teaches). Explicit `nextStep()` calls from your own
+   * handlers still advance. `undefined` means no gating.
+   */
+  completed?: boolean;
+  /**
+   * Let touches pass through the spotlight hole to the real element underneath,
+   * so the user can actually tap the thing being highlighted. Requires
+   * `config.overlayMode: 'inline'` — a Modal overlay swallows every touch.
+   * Advance the tour from the element's own handler (call `nextStep()`), or
+   * pair with `completed` gating.
+   */
+  interactive?: boolean;
+  /** Custom tooltip renderer for this step only (overrides config.renderTooltip) */
+  renderTooltip?: (props: TooltipProps) => ReactNode;
+  /** Spotlight transition into this step (overrides config.motion) */
+  motion?: SpotlightMotion;
+}
+
+/**
+ * How the spotlight travels between steps:
+ * - 'morph' (default): animates position, size and radius in one smooth move
+ * - 'bounce': the same move on a spring, with a little overshoot
+ * - 'fade': the overlay dips out, jumps, and fades back in at the new target
+ * - 'none': instant jump, no animation
+ */
+export type SpotlightMotion = 'morph' | 'bounce' | 'fade' | 'none';
+
+/**
+ * Custom spotlight cutout path. Return an SVG subpath describing the hole
+ * (it is punched out of the full-screen backdrop via evenodd fill).
+ * The ultimate escape hatch — draw any highlight shape you like.
+ */
+export type SpotlightMaskPathFn = (args: {
+  /** The measured target (unpadded), in window coordinates */
+  target: SpotlightTarget;
+  /** The padded bounding box the default shape would use */
+  bounds: { x: number; y: number; width: number; height: number };
+  screenWidth: number;
+  screenHeight: number;
+}) => string;
+
+// ─── Headless component slots ───────────────────────────────────────────────
+
+/** Props passed to a replacement tour button (Next / Back / Skip). */
+export interface TourButtonProps {
+  /** Resolved label text (respects configured button texts and Done on the last step) */
+  label: string;
+  onPress: () => void;
+  /** True when `completed: false` gating disables this button */
+  disabled?: boolean;
+  /** True on the final step (Next slot only) */
+  isLast?: boolean;
+}
+
+/** Props passed to a replacement progress indicator (StepCounter / ProgressDots). */
+export interface TourProgressProps {
+  currentStep: number;
+  totalSteps: number;
+}
+
+/**
+ * Replace individual pieces of the built-in tooltip without rebuilding the
+ * whole thing. Anything not provided keeps the default rendering. For a fully
+ * custom tooltip, use `renderTooltip` instead.
+ */
+export interface TooltipComponents {
+  NextButton?: ComponentType<TourButtonProps>;
+  PrevButton?: ComponentType<TourButtonProps>;
+  SkipButton?: ComponentType<TourButtonProps>;
+  StepCounter?: ComponentType<TourProgressProps>;
+  ProgressDots?: ComponentType<TourProgressProps>;
 }
 
 /**
@@ -167,6 +263,12 @@ export interface SpotlightStyles {
   pulseMinOpacity?: number;
   /** Pulse max opacity (default: 0.8) */
   pulseMaxOpacity?: number;
+  /**
+   * Custom cutout shape: return an SVG subpath for the spotlight hole.
+   * Overrides the automatic shape matching for every step. Shape animation is
+   * skipped for custom paths (the hole jumps between steps).
+   */
+  maskPath?: SpotlightMaskPathFn;
 }
 
 /**
@@ -214,8 +316,26 @@ export interface TourGuideConfig {
   doneButtonText?: string;
   /** Custom render function for tooltip */
   renderTooltip?: (props: TooltipProps) => ReactNode;
+  /** Replace individual tooltip pieces (buttons, counter, dots) while keeping the rest */
+  components?: TooltipComponents;
+  /**
+   * How the overlay is mounted (default: 'modal').
+   * - 'modal': a React Native Modal — always on top, immune to parent overflow,
+   *   but the app underneath is unreachable while the tour runs.
+   * - 'inline': an absolutely-positioned view rendered where <TourGuideOverlay />
+   *   sits. Required for `interactive` steps (touches can reach the highlighted
+   *   element). Place <TourGuideOverlay /> at the root of your app so it covers
+   *   the full screen; the Android back button is not intercepted in this mode.
+   */
+  overlayMode?: 'modal' | 'inline';
+  /** Whether tooltip text respects the OS font-size setting (default: true) */
+  allowFontScaling?: boolean;
+  /** Cap on OS font scaling applied to tooltip text (default: unlimited) */
+  maxFontSizeMultiplier?: number;
   /** Animation duration in ms for spotlight transitions (default: 300) */
   animationDuration?: number;
+  /** Default spotlight transition between steps (default: 'morph'); steps can override */
+  motion?: SpotlightMotion;
 
   // --- Lifecycle events ---
 
@@ -257,7 +377,11 @@ export interface TourGuideConfig {
 
   /** Default backdrop behavior for all steps (default: 'none') */
   defaultBackdropBehavior?: BackdropBehavior;
-  /** Enable smart tooltip auto-positioning (default: false) */
+  /**
+   * Smart tooltip auto-positioning, which flips the tooltip to whichever side
+   * has room so it never renders off-screen (default: true).
+   * Set to `false` to always honour each step's explicit `tooltipPosition`.
+   */
   autoPositionTooltip?: boolean;
   /** Safe zone offset in px for scroll calculations (default: 120) */
   safeZoneOffset?: number;
@@ -289,7 +413,11 @@ export interface TourGuideConfig {
 }
 
 /**
- * Props passed to custom tooltip render function
+ * Props passed to custom tooltip render functions and the built-in tooltip.
+ *
+ * This is the library's **headless contract**: everything a fully custom
+ * tooltip needs — target geometry, resolved placement, safe-area insets, and
+ * navigation callbacks. Treat it as a stable public API.
  */
 export interface TooltipProps {
   title: string;
@@ -311,6 +439,17 @@ export interface TooltipProps {
   screenHeight?: number;
   /** Resolved safe-area + extra insets the tooltip must stay within */
   insets?: EdgeInsets;
+  /** True when `completed: false` gating should disable the Next button */
+  nextDisabled?: boolean;
+  /** True on the final step (Next acts as Done) */
+  isLastStep?: boolean;
+}
+
+/** A target registered by <TourTarget>, addressable from steps via `targetId`. */
+export interface RegisteredTarget {
+  ref: MeasurableRef;
+  /** The wrapper's style — used for spotlight shape extraction when the step has no targetStyle */
+  style?: StyleProp<ViewStyle>;
 }
 
 /**
@@ -331,8 +470,26 @@ export interface TourGuideContextValue {
   activeSteps: TourStep[];
   /** Configuration for the tour */
   config?: TourGuideConfig;
-  /** Start a new tour with the given steps */
-  startTour: (steps: TourStep[], config?: TourGuideConfig) => void;
+  /**
+   * Start a tour: pass a steps array (with optional config), or the id of a
+   * tour previously registered with `defineTour` (config then overrides the
+   * stored one field-by-field).
+   */
+  startTour: (steps: TourStep[] | string, config?: TourGuideConfig) => void;
+  /**
+   * Register a named tour up front so it can be started by id from anywhere
+   * (`startTour('onboarding')`) and checked with `canStartTour`.
+   */
+  defineTour: (tourId: string, steps: TourStep[], config?: TourGuideConfig) => void;
+  /** Remove a tour registered with defineTour. */
+  removeTour: (tourId: string) => void;
+  /**
+   * Whether a tour is ready to start: every step that references a `targetId`
+   * has its <TourTarget> registered (steps with targetRef / targetRegion / no
+   * target always count as ready). Accepts a defined tour's id or a steps
+   * array. Useful to delay startTour until async screens have mounted.
+   */
+  canStartTour: (tourOrSteps: string | TourStep[]) => boolean;
   /** Move to the next step */
   nextStep: () => void;
   /** Move to the previous step */
@@ -347,8 +504,30 @@ export interface TourGuideContextValue {
   pauseTour: () => void;
   /** Resume a paused tour */
   resumeTour: () => void;
+  /**
+   * Mark a step's gating condition met (or unmet). A step with
+   * `completed: false` keeps its Next button disabled until this is called
+   * with `true`.
+   */
+  setStepCompleted: (stepId: string, completed: boolean) => void;
+  /** Register a <TourTarget> so steps can reference it by `targetId`. Called by TourTarget. */
+  registerTarget: (id: string, ref: MeasurableRef, style?: StyleProp<ViewStyle>) => void;
+  /**
+   * Unregister a <TourTarget> (called on unmount). Pass the same ref that was
+   * registered so an unmounting duplicate can't remove a still-mounted
+   * instance's registration; without a ref, removal is unconditional.
+   */
+  unregisterTarget: (id: string, ref?: MeasurableRef) => void;
+  /** Look up a registered target by id. */
+  getTarget: (id: string) => RegisteredTarget | undefined;
   /** Set the target layout (internal) */
   setTargetLayout: (layout: SpotlightTarget | null) => void;
   /** Current target layout */
   targetLayout: SpotlightTarget | null;
+  /**
+   * Registers a mounted `<TourGuideOverlay />` so the provider can warn (in dev)
+   * when no overlay — or more than one — is mounted. Returns its cleanup.
+   * @internal Not part of the supported public API.
+   */
+  __registerOverlay?: () => () => void;
 }

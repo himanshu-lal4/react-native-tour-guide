@@ -1,5 +1,6 @@
 // Main exports
 export { TourGuideProvider, useTourGuide } from './TourGuideContext';
+export { TourTarget } from './TourTarget';
 export { default as TourGuideOverlay } from './TourGuideOverlay';
 export { default as SpotlightOverlay } from './SpotlightOverlay';
 export { default as Tooltip } from './Tooltip';
@@ -26,6 +27,10 @@ export { announceStep, getTooltipAccessibilityProps } from './accessibility';
 // Type exports
 export type {
   TourStep,
+  RegisteredTarget,
+  TooltipComponents,
+  TourButtonProps,
+  TourProgressProps,
   TourGuideConfig,
   TourGuideContextValue,
   SpotlightTarget,
@@ -39,9 +44,12 @@ export type {
   MeasurableRef,
   ScrollableRef,
   EdgeInsets,
+  SpotlightMotion,
+  SpotlightMaskPathFn,
 } from './types';
 
-export type { SpotlightBorderRadius, ShapeBounds, ShapeResult } from './shapes';
+export type { SpotlightBorderRadius, SpotlightPadding, ShapeBounds, ShapeResult } from './shapes';
 
 export type { TourGuideProviderProps } from './TourGuideContext';
+export type { TourTargetProps } from './TourTarget';
 export type { SpotlightOverlayProps } from './SpotlightOverlay';

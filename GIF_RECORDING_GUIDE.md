@@ -1,212 +1,125 @@
-# GIF Recording Guide
+# Recording the README demo
 
-## 🎬 Platform-Specific Demo Guide
+The demo is the first thing anyone sees. It has to look like a finished product,
+not a test harness.
 
-This guide will help you record two distinct GIF demos - one for iOS and one for Android.
+## What we record
 
----
+`example/src/DemoShowcase.tsx` — a plausible wallet app that the tour runs over.
+It is deliberately **not** the feature harness in `example/src/App.tsx`. Every
+step demonstrates a capability *incidentally* (a circular avatar produces a
+circular spotlight; the last transaction row starts off-screen so the tour has
+to scroll) rather than announcing "here is the circle feature".
 
-## 🍎 iOS GIF Recording
+Five steps, ~2.6s each on device. That is the whole demo.
 
-### Visual Style
+## 1. Switch the example app to the demo screen
 
-- **Background**: Light gray (#F2F2F7)
-- **Primary Color**: iOS Blue (#007AFF)
-- **Accent Color**: iOS Green (#34C759)
-- **Design**: Sleek, minimal with shadows
-- **Border Radius**: Rounded (12-16px)
+> The demo self-plays ~2.5s/step. `scripts/make-demo.sh` speeds it up in post.
 
-### Tour Steps (5 total)
+In `example/index.js`:
 
-1. **Welcome to iOS! 👋** (Rectangle)
-   - Button: "Begin Tour"
-   - Blue iOS button with shadow
-
-2. **Perfect Circles ⭕** (Circle)
-   - Red circular button (#FF3B30)
-   - Shows circular spotlight
-
-3. **Smart Scrolling 🍎** (Rectangle + Auto-scroll)
-   - White bordered button
-   - Demonstrates automatic scrolling
-
-4. **Icon Spotlight 🎯** (Circle)
-   - Orange circular icon (#FF9500)
-   - Another circular spotlight example
-
-5. **All Done! 🎉** (Rectangle)
-   - Green button (#34C759)
-   - Final step
-
-### Button Text
-
-- Next: "Continue"
-- Previous: "Back"
-- Done: "Done"
-
----
-
-## 🤖 Android GIF Recording
-
-### Visual Style
-
-- **Background**: Light gray (#FAFAFA)
-- **Primary Color**: Material Purple (#6200EE)
-- **Accent Color**: Material Teal (#03DAC6)
-- **Design**: Material Design with elevation
-- **Border Radius**: Sharp (4-8px)
-
-### Tour Steps (5 total)
-
-1. **Welcome to Android! 🤖** (Rectangle)
-   - Button: "Start Tour"
-   - Purple Material button with elevation
-
-2. **Circular Spotlight ⭕** (Circle)
-   - Purple circular FAB (#BB86FC)
-   - ➕ icon
-   - Shows circular spotlight
-
-3. **Auto-Scroll Feature 📜** (Rectangle + Auto-scroll)
-   - Teal button (#03DAC6)
-   - Demonstrates automatic scrolling
-
-4. **Floating Action 🎯** (Circle)
-   - Yellow circular FAB (#FFB300)
-   - ⚡ icon
-   - Another circular spotlight example
-
-5. **Tour Complete! 🎉** (Rectangle)
-   - Dark teal button (#018786)
-   - Final step
-
-### Button Text
-
-- Next: "Next"
-- Previous: "Previous"
-- Done: "Finish"
-
----
-
-## 📝 Recording Checklist
-
-### Before Recording
-
-- [ ] Run `npm run build` to compile latest changes
-- [ ] Start the example app: `cd example && npm start`
-- [ ] Run on iOS simulator or Android emulator
-- [ ] Clear any previous tour data if needed
-- [ ] Set up screen recording software
-
-### iOS Recording
-
-- [ ] Open iOS simulator (iPhone 14 Pro recommended)
-- [ ] Tap "Begin Tour" button
-- [ ] Navigate through all 5 steps
-- [ ] Show both rectangle and circular spotlights
-- [ ] Demonstrate auto-scroll on step 3
-- [ ] Complete the tour
-
-### Android Recording
-
-- [ ] Open Android emulator (Pixel 6 recommended)
-- [ ] Tap "Start Tour" button
-- [ ] Navigate through all 5 steps
-- [ ] Show both rectangle and circular spotlights
-- [ ] Demonstrate auto-scroll on step 3
-- [ ] Complete the tour
-
-### Post-Recording
-
-- [ ] Convert to GIF (optimize to < 5MB)
-- [ ] Name files: `ios-demo.gif` and `android-demo.gif`
-- [ ] Add to README.md
-
----
-
-## 🎯 Key Differences to Highlight
-
-### iOS Demo Should Show:
-
-- Smooth rounded corners
-- Subtle shadows
-- iOS blue color (#007AFF)
-- "Continue" / "Done" buttons
-- Circular buttons with emoji: ⭕ and 🎯
-
-### Android Demo Should Show:
-
-- Material elevation effects
-- Sharp corners (4px radius)
-- Material purple/teal colors
-- "Next" / "Finish" buttons
-- Circular FABs with emoji: ➕ and ⚡
-
----
-
-## 🔧 Technical Details
-
-### Scroll Functionality
-
-The tour now includes:
-
-- ✅ Automatic detection of off-screen elements
-- ✅ Smart scrolling to bring elements into view
-- ✅ Safe zone calculation (120px offset for navigation)
-- ✅ Smooth animations (400ms)
-
-### Spotlight Precision
-
-- ✅ Default padding: 0px (tight fit)
-- ✅ Customizable per step (4px for rectangles, 8px for circles in demo)
-- ✅ Circle shape uses `Math.max` to ensure full element visibility
-
----
-
-## 📱 Running the Example
-
-```bash
-# Build the library
-npm run build
-
-# Navigate to example
-cd example
-
-# Install dependencies (if needed)
-npm install
-
-# Start Metro bundler
-npm start
-
-# Run on iOS
-npm run ios
-
-# Run on Android
-npm run android
+```js
+const RECORD_DEMO = true;
 ```
 
----
+`AUTO_PLAY` is already `true` in `DemoShowcase.tsx`, so the tour self-plays on
+launch at a relaxed pace. Recording slowly and speeding up in post gives a crisp
+result; recording fast gives a frantic one.
 
-## 🎨 Color Reference
+## 2. Record from a standalone build, not Expo Go
 
-### iOS Colors
+Expo Go overlays its own UI on every project — the floating Tools gear, the
+dev-menu onboarding sheet, "Open in example?" dialogs — and all of them
+photobomb a recording (this is a large part of why the old GIF looked
+unprofessional). Build the example as a standalone release app instead; it
+contains zero Expo UI:
 
-- Primary: `#007AFF` (iOS Blue)
-- Success: `#34C759` (iOS Green)
-- Circular 1: `#FF3B30` (iOS Red)
-- Circular 2: `#FF9500` (iOS Orange)
-- Background: `#F2F2F7`
+```bash
+cd example
+npx expo run:ios --configuration Release --device "iPhone 17 Pro"
+```
 
-### Android Colors
+Then launch it directly (never via an `exp://` deep link, which adds an
+"◀ Expo Go" breadcrumb and an open-confirmation dialog):
 
-- Primary: `#6200EE` (Material Purple)
-- Secondary: `#03DAC6` (Material Teal)
-- Accent: `#018786` (Teal Dark)
-- Circular 1: `#BB86FC` (Purple Light)
-- Circular 2: `#FFB300` (Amber)
-- Background: `#FAFAFA`
+```bash
+xcrun simctl launch booted wrack.reactnativetourguide.example
+```
 
----
+If a stray system dialog is stuck on screen, reboot the simulator
+(`xcrun simctl shutdown booted && xcrun simctl boot <udid>`) — synthetic
+clicking is unreliable; a reboot is deterministic.
 
-Good luck with your recordings! 🎬✨
+## 3. Record at native resolution
 
+Do **not** downscale while recording. The old demo was captured at 300px wide,
+which is soft on every retina display — that alone made it read as amateur.
+
+**iOS simulator**
+
+```bash
+xcrun simctl io booted recordVideo --codec h264 --mask ignored ios.mov
+```
+
+Use a device with a clean status bar. Set a tidy clock first:
+
+```bash
+xcrun simctl status_bar booted override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
+```
+
+**Android emulator** — use the emulator's built-in recorder (⋯ → Record screen),
+or:
+
+```bash
+adb shell screenrecord --bit-rate 8000000 /sdcard/android.mp4 && adb pull /sdcard/android.mp4
+```
+
+Record a few seconds of lead-in and tail; you trim in the next step.
+
+## 4. Encode
+
+```bash
+scripts/make-demo.sh ios.mov IOSDemo <start> <duration> <speed> <width>
+
+# typical:
+scripts/make-demo.sh ios.mov IOSDemo 1.2 14 1.35 540
+scripts/make-demo.sh android.mp4 AndroidDemo 1.0 14 1.35 540
+```
+
+Each run produces three files:
+
+| File | Used by | Why |
+|---|---|---|
+| `IOSDemo.gif` | README | GitHub does not play `<video>` in a README |
+| `IOSDemo.mp4` | docs site, social cards | ~10× smaller, full colour |
+| `IOSDemo.webm` | docs site | smaller still |
+
+Add `FRAME=1` to round the screen corners and drop the recording on a backdrop
+so it reads as a device instead of a cropped rectangle:
+
+```bash
+FRAME=1 scripts/make-demo.sh ios.mov IOSDemo 1.2 14 1.35 540
+```
+
+Tunable via env: `FPS` (30), `RADIUS` (28), `PAD` (28), `BG` (`0x0B0F1A`).
+
+## Why the defaults are what they are
+
+- **540px wide, not 300** — GitHub renders README images up to ~880px. 300px is
+  visibly soft on any retina screen.
+- **30fps, not 15** — the spotlight morph *is* the product. At 15fps a 400ms
+  transition is six frames and reads as a jump cut.
+- **~14s, not 22s** — a README GIF should loop before the reader scrolls past.
+- **`sierra2_4a` dithering, not `bayer`** — bayer lays a visible cross-hatch over
+  flat UI panels, which is a large part of why the old GIF looked cheap.
+
+## Checklist before committing
+
+- [ ] Under 3MB per GIF (the script warns past this).
+- [ ] No personal data, real names, or notification banners on screen.
+- [ ] Status bar clock is the same in both recordings.
+- [ ] The first frame is interesting — GitHub shows it before autoplay starts.
+- [ ] iOS and Android are the same length and pacing, so only the platform
+      chrome differs.
+- [ ] `RECORD_DEMO` set back to `false` in `example/index.js`.

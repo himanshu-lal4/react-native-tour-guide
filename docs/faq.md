@@ -25,7 +25,19 @@ Yes. The overlay is drawn with a single even-odd SVG path (a real punched-out ho
 
 ## Can I fully customize the tooltip?
 
-Yes. Use `tooltipStyles` to restyle the built-in tooltip, or pass `renderTooltip` to render your own component — it receives the title, description, step index, and `onNext`/`onPrev`/`onSkip` handlers.
+Yes, at three levels: `tooltipStyles` restyles the built-in tooltip; `config.components` slots replace individual pieces (NextButton, SkipButton, progress dots) while keeping the rest; and `renderTooltip` (global or per step) renders your own component against the stable `TooltipProps` contract — target geometry, resolved placement, safe-area insets, progress, and navigation callbacks. See [Bring your own tooltip UI]({{ '/custom-tooltip-design-system/' | relative_url }}).
+
+## Can I use it with my own design system / Figma designs?
+
+Yes — that is the library's core positioning. You keep the tour engine (measurement, auto-scroll, placement, safe areas, sequencing, persistence, edge cases) and bring your own UI. A production custom tooltip is about 40 lines; see the [design-system integration guide]({{ '/custom-tooltip-design-system/' | relative_url }}).
+
+## Can users tap the highlighted element during the tour?
+
+Yes. Set `overlayMode: 'inline'` on the config and `interactive: true` on the step — touches pass through the spotlight hole to the real element. Combine with `completed: false` and `setStepCompleted()` to disable Next until the user actually performs the action.
+
+## Do I have to thread refs into my steps?
+
+No. Wrap the element in `<TourTarget id="compose">` and reference it from the step with `targetId: 'compose'`. The wrapper handles Android view flattening (`collapsable={false}`) and targets that mount after the tour starts.
 
 ## What are the dependencies and bundle size?
 

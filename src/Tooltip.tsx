@@ -1,14 +1,17 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
 
 import type { TourGuideConfig, TooltipProps } from './types';
-import { computeTooltipPosition } from './utils';
+import { computeTooltipPosition, isLightColor } from './utils';
 import { getTooltipAccessibilityProps } from './accessibility';
 
 const DEFAULT_CONFIG: TourGuideConfig = {};
 
 const DEFAULT_TOOLTIP_WIDTH = 320;
+// Never shrink the body below this, even in a very tight corner — a narrower
+// tooltip is unreadable, and overflowing slightly is the better failure.
+const MIN_TOOLTIP_WIDTH = 100;
 const DEFAULT_TRIANGLE_SIZE = 12;
 const DEFAULT_OFFSET = 8;
 
@@ -39,6 +42,8 @@ const Tooltip: React.FC<TooltipProps> = ({
   screenWidth = 0,
   screenHeight = 0,
   insets = ZERO_INSETS,
+  nextDisabled = false,
+  isLastStep,
 }) => {
   const {
     tooltipStyles: tooltipStylesConfig,
@@ -52,25 +57,49 @@ const Tooltip: React.FC<TooltipProps> = ({
     tooltipWidth: configTooltipWidth,
     triangleSize: configTriangleSize,
     tooltipOffset: configTooltipOffset,
+    components = {},
+    allowFontScaling = true,
+    maxFontSizeMultiplier,
   } = config;
+
+  // Shared props for every Text node: respect the OS font-size setting, with an
+  // optional cap so extreme sizes don't explode the layout.
+  const textScaleProps = { allowFontScaling, maxFontSizeMultiplier };
 
   const TOOLTIP_WIDTH = configTooltipWidth ?? DEFAULT_TOOLTIP_WIDTH;
   const TRIANGLE_SIZE = configTriangleSize ?? DEFAULT_TRIANGLE_SIZE;
   const OFFSET = configTooltipOffset ?? DEFAULT_OFFSET;
 
+  // Readable-by-default: when a consumer sets a custom tooltip background but
+  // no text colors, derive dark-on-light or light-on-dark defaults from that
+  // background instead of assuming white text. A pale background with the old
+  // hard-coded white title rendered invisible text.
+  const backgroundColor = tooltipStylesConfig?.backgroundColor ?? '#2C2C2E';
+  const bgIsLight = isLightColor(backgroundColor) === true;
+  const autoInk = bgIsLight ? '#1C1C1E' : '#FFFFFF';
+  const autoSecondary = bgIsLight ? '#E5E5EA' : '#3A3A3C';
+
   const {
-    backgroundColor = '#2C2C2E',
     borderRadius = 16,
-    titleColor = '#FFFFFF',
-    descriptionColor = '#FFFFFF',
+    titleColor = autoInk,
+    descriptionColor = autoInk,
     buttonTextColor = '#FFFFFF',
     primaryButtonColor = '#007AFF',
-    secondaryButtonColor = '#3A3A3C',
-    skipButtonColor = '#FFFFFF',
+    secondaryButtonColor = autoSecondary,
+    skipButtonColor = autoInk,
     titleStyle: customTitleStyle,
     descriptionStyle: customDescriptionStyle,
     containerStyle: customContainerStyle,
   } = tooltipStylesConfig ?? {};
+
+  // Secondary (Back) button text must read against the BUTTON's own
+  // background — not the tooltip's. A consumer may set a dark
+  // secondaryButtonColor on a light tooltip (or vice versa); deriving from the
+  // tooltip background would render unreadable text on that button.
+  // Unparseable button color → fall back to the tooltip-background derivation.
+  const secondaryIsLight = isLightColor(secondaryButtonColor) ?? bgIsLight;
+  const secondaryTextColor =
+    tooltipStylesConfig?.buttonTextColor ?? (secondaryIsLight ? '#1C1C1E' : '#FFFFFF');
 
   const targetCenterX = position.x + targetWidth / 2;
 
@@ -93,6 +122,9 @@ const Tooltip: React.FC<TooltipProps> = ({
         tooltipWidth: TOOLTIP_WIDTH,
         tooltipHeight: 150,
         offset: OFFSET + TRIANGLE_SIZE,
+        // Without the insets a tooltip could be placed under the status bar or
+        // behind the home indicator / navigation bar.
+        insets,
       });
     }
 
@@ -109,6 +141,7 @@ const Tooltip: React.FC<TooltipProps> = ({
     TOOLTIP_WIDTH,
     OFFSET,
     TRIANGLE_SIZE,
+    insets,
   ]);
 
   // Compute tooltip body position and style
@@ -121,9 +154,10 @@ const Tooltip: React.FC<TooltipProps> = ({
       // Guard against negative range on very narrow screens.
       const clampedLeft = Math.max(minLeft, Math.min(idealLeft, Math.max(minLeft, maxLeft)));
 
-      return { left: clampedLeft, maxWidth: TOOLTIP_WIDTH, minWidth: 100 };
+      return { left: clampedLeft, maxWidth: TOOLTIP_WIDTH, minWidth: MIN_TOOLTIP_WIDTH };
     }
-    return { left: undefined as number | undefined, maxWidth: TOOLTIP_WIDTH, minWidth: 100 };
+    // Side placements size themselves via the container (see `placement`).
+    return { left: undefined as number | undefined, minWidth: MIN_TOOLTIP_WIDTH };
   }, [tooltipPosition, targetCenterX, TOOLTIP_WIDTH, screenWidth, insets.left, insets.right]);
 
   // Compute the container position. Vertical placement is always expressed as an
@@ -143,10 +177,39 @@ const Tooltip: React.FC<TooltipProps> = ({
       case 'left':
       case 'right': {
         const top = clampTop(position.y + targetHeight / 2 - H / 2);
+        const PAD = 8;
+
+        // Side placements had no horizontal clamp: a target near the screen edge
+        // pushed the tooltip partly (or entirely) off-screen. Shrink the tooltip
+        // to the space that actually exists, then pin it inside the insets.
+        const available =
+          tooltipPosition === 'left'
+            ? position.x - OFFSET - TRIANGLE_SIZE - insets.left - PAD
+            : screenWidth -
+              insets.right -
+              (position.x + targetWidth + OFFSET + TRIANGLE_SIZE) -
+              PAD;
+        const width = Math.max(MIN_TOOLTIP_WIDTH, Math.min(TOOLTIP_WIDTH, available));
+
         const horizontal =
           tooltipPosition === 'left'
-            ? { right: screenWidth - position.x + OFFSET + TRIANGLE_SIZE }
-            : { left: position.x + targetWidth + OFFSET + TRIANGLE_SIZE };
+            ? {
+                right: Math.min(
+                  screenWidth - position.x + OFFSET + TRIANGLE_SIZE,
+                  screenWidth - insets.left - width - PAD
+                ),
+                maxWidth: width,
+              }
+            : {
+                left: Math.max(
+                  insets.left + PAD,
+                  Math.min(
+                    position.x + targetWidth + OFFSET + TRIANGLE_SIZE,
+                    screenWidth - insets.right - width - PAD
+                  )
+                ),
+                maxWidth: width,
+              };
         // Keep the arrow pointing at the target's vertical center, but clamp it
         // within the (possibly repositioned) tooltip body.
         const rawArrow = position.y + targetHeight / 2 - top - TRIANGLE_SIZE;
@@ -174,8 +237,11 @@ const Tooltip: React.FC<TooltipProps> = ({
     OFFSET,
     TRIANGLE_SIZE,
     borderRadius,
+    TOOLTIP_WIDTH,
     insets.top,
     insets.bottom,
+    insets.left,
+    insets.right,
   ]);
 
   const getTriangleStyle = () => {
@@ -266,6 +332,34 @@ const Tooltip: React.FC<TooltipProps> = ({
   const showPrev = enableBackButton && !hidePrevButton && Boolean(onPrev) && currentStep > 0;
   const showSkip = !hideSkipButton;
   const showNext = !hideNextButton;
+  const isLast = isLastStep ?? currentStep === totalSteps - 1;
+  const nextLabel = isLast ? doneButtonText : nextButtonText;
+
+  // Shrink-to-fit: the tooltip body may never be taller than the space inside
+  // the insets — a long description on a small screen scrolls inside the body
+  // instead of running off-screen.
+  const maxBodyHeight = Math.max(
+    140,
+    screenHeight > 0 ? screenHeight - insets.top - insets.bottom - 32 : 9999
+  );
+
+  const { NextButton, PrevButton, SkipButton, StepCounter, ProgressDots } = components;
+
+  // Slot resolution as plain nodes keeps the JSX below free of nested ternaries.
+  const skipNode =
+    showSkip && SkipButton ? <SkipButton label={skipButtonText} onPress={onSkip} /> : null;
+  const counterNode =
+    showStepCounter && totalSteps > 1 && StepCounter ? (
+      <StepCounter currentStep={currentStep} totalSteps={totalSteps} />
+    ) : null;
+  const prevNode =
+    showPrev && PrevButton ? (
+      <PrevButton label={prevButtonText} onPress={onPrev ?? (() => {})} />
+    ) : null;
+  const nextNode =
+    showNext && NextButton ? (
+      <NextButton label={nextLabel} onPress={onNext} disabled={nextDisabled} isLast={isLast} />
+    ) : null;
 
   // Accessibility
   const a11yProps = getTooltipAccessibilityProps(
@@ -287,7 +381,7 @@ const Tooltip: React.FC<TooltipProps> = ({
           onLayout={onBodyLayout}
           style={[
             internalStyles.tooltipBody,
-            { backgroundColor, borderRadius },
+            { backgroundColor, borderRadius, maxHeight: maxBodyHeight },
             tooltipBodyStyle,
             customContainerStyle,
           ]}
@@ -295,12 +389,14 @@ const Tooltip: React.FC<TooltipProps> = ({
           {/* Header with title and skip */}
           <View style={internalStyles.header}>
             <Text
+              {...textScaleProps}
               style={[internalStyles.titleText, { color: titleColor }, customTitleStyle]}
               numberOfLines={2}
             >
               {title}
             </Text>
-            {showSkip ? (
+            {skipNode}
+            {showSkip && !SkipButton ? (
               <Pressable
                 style={[internalStyles.skipButton, { borderColor: skipButtonColor }]}
                 onPress={onSkip}
@@ -308,28 +404,41 @@ const Tooltip: React.FC<TooltipProps> = ({
                 accessibilityRole="button"
                 accessibilityLabel={`${skipButtonText} tour`}
               >
-                <Text style={[internalStyles.skipText, { color: skipButtonColor }]}>
+                <Text
+                  {...textScaleProps}
+                  style={[internalStyles.skipText, { color: skipButtonColor }]}
+                >
                   {skipButtonText}
                 </Text>
               </Pressable>
             ) : null}
           </View>
 
-          {/* Description */}
-          <Text
-            style={[
-              internalStyles.descriptionText,
-              { color: descriptionColor },
-              customDescriptionStyle,
-            ]}
+          {/* Description — scrolls when the shrink-to-fit cap constrains the body */}
+          <ScrollView
+            style={internalStyles.descriptionScroll}
+            contentContainerStyle={internalStyles.descriptionContent}
+            showsVerticalScrollIndicator={false}
           >
-            {description}
-          </Text>
+            <Text
+              {...textScaleProps}
+              style={[
+                internalStyles.descriptionText,
+                { color: descriptionColor },
+                customDescriptionStyle,
+              ]}
+            >
+              {description}
+            </Text>
+          </ScrollView>
 
           {/* Footer with progress and buttons */}
           <View style={internalStyles.footer}>
             {/* Progress dots */}
-            {showProgressDots && totalSteps > 1 ? (
+            {showProgressDots && totalSteps > 1 && ProgressDots ? (
+              <ProgressDots currentStep={currentStep} totalSteps={totalSteps} />
+            ) : null}
+            {showProgressDots && totalSteps > 1 && !ProgressDots ? (
               <View style={internalStyles.dotsContainer}>
                 {Array.from({ length: totalSteps }).map((_, index) => (
                   <View
@@ -351,40 +460,58 @@ const Tooltip: React.FC<TooltipProps> = ({
             {/* Navigation buttons */}
             <View style={internalStyles.navigationRow}>
               {/* Step counter */}
-              {showStepCounter && totalSteps > 1 ? (
-                <Text style={[internalStyles.stepCounter, { color: descriptionColor }]}>
+              {counterNode}
+              {showStepCounter && totalSteps > 1 && !StepCounter ? (
+                <Text
+                  {...textScaleProps}
+                  style={[internalStyles.stepCounter, { color: descriptionColor }]}
+                >
                   {currentStep + 1}/{totalSteps}
                 </Text>
               ) : null}
 
               <View style={internalStyles.buttonsContainer}>
                 {/* Back button */}
-                {showPrev ? (
+                {prevNode}
+                {showPrev && !PrevButton ? (
                   <Pressable
                     onPress={onPrev}
                     style={[internalStyles.button, { backgroundColor: secondaryButtonColor }]}
                     accessibilityRole="button"
                     accessibilityLabel={`${prevButtonText}, go to previous step`}
                   >
-                    <Text style={[internalStyles.buttonText, { color: buttonTextColor }]}>
+                    <Text
+                      {...textScaleProps}
+                      style={[internalStyles.buttonText, { color: secondaryTextColor }]}
+                    >
                       {prevButtonText}
                     </Text>
                   </Pressable>
                 ) : null}
                 {/* Next/Done button */}
-                {showNext ? (
+                {nextNode}
+                {showNext && !NextButton ? (
                   <Pressable
                     onPress={onNext}
-                    style={[internalStyles.buttonPrimary, { backgroundColor: primaryButtonColor }]}
+                    disabled={nextDisabled}
+                    style={[
+                      internalStyles.buttonPrimary,
+                      { backgroundColor: primaryButtonColor },
+                      nextDisabled && internalStyles.buttonDisabled,
+                    ]}
                     accessibilityRole="button"
+                    accessibilityState={{ disabled: nextDisabled }}
                     accessibilityLabel={
-                      currentStep === totalSteps - 1
+                      isLast
                         ? `${doneButtonText}, finish tour`
                         : `${nextButtonText}, go to step ${currentStep + 2}`
                     }
                   >
-                    <Text style={[internalStyles.buttonPrimaryText, { color: buttonTextColor }]}>
-                      {currentStep === totalSteps - 1 ? doneButtonText : nextButtonText}
+                    <Text
+                      {...textScaleProps}
+                      style={[internalStyles.buttonPrimaryText, { color: buttonTextColor }]}
+                    >
+                      {nextLabel}
                     </Text>
                   </Pressable>
                 ) : null}
@@ -442,11 +569,20 @@ const internalStyles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  descriptionScroll: {
+    flexShrink: 1,
+    marginBottom: 12,
+  },
+  descriptionContent: {
+    flexGrow: 0,
+  },
   descriptionText: {
     fontSize: 14,
     fontWeight: '400',
-    marginBottom: 12,
     lineHeight: 20,
+  },
+  buttonDisabled: {
+    opacity: 0.4,
   },
   footer: {
     gap: 12,

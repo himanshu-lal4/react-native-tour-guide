@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react';
 
 import type { TourStorage, TourStep, TourGuideConfig } from './types';
 import { useTourGuide } from './TourGuideContext';
+import { warn } from './dev';
 
 const STORAGE_PREFIX = '@tour_guide:';
 
@@ -40,22 +41,47 @@ export const useTourPersistence = (storage: TourStorage) => {
    * Check if a tour has been completed
    */
   const isTourCompleted = useCallback(async (tourId: string): Promise<boolean> => {
-    const value = await storageRef.current.getItem(`${STORAGE_PREFIX}${tourId}`);
-    return value === 'completed';
+    try {
+      const value = await storageRef.current.getItem(`${STORAGE_PREFIX}${tourId}`);
+      return value === 'completed';
+    } catch (error) {
+      // A storage backend that is unavailable (not yet initialised, quota, web
+      // private mode) must not decide whether the user sees the tour, and must
+      // not reject into the caller. Treat "unknown" as "not completed".
+      warn(
+        `Could not read tour state for "${tourId}" from storage: ${String(error)}. Treating the tour as not yet completed.`,
+        'Check that the storage adapter is initialised before calling startTour().'
+      );
+      return false;
+    }
   }, []);
 
   /**
    * Mark a tour as completed
    */
   const markCompleted = useCallback(async (tourId: string) => {
-    await storageRef.current.setItem(`${STORAGE_PREFIX}${tourId}`, 'completed');
+    try {
+      await storageRef.current.setItem(`${STORAGE_PREFIX}${tourId}`, 'completed');
+    } catch (error) {
+      warn(
+        `Could not persist completion of tour "${tourId}": ${String(error)}. The tour will show again next launch.`,
+        'Check that the storage adapter is writable.'
+      );
+    }
   }, []);
 
   /**
    * Reset a tour so it shows again
    */
   const resetTour = useCallback(async (tourId: string) => {
-    await storageRef.current.removeItem(`${STORAGE_PREFIX}${tourId}`);
+    try {
+      await storageRef.current.removeItem(`${STORAGE_PREFIX}${tourId}`);
+    } catch (error) {
+      warn(
+        `Could not reset tour "${tourId}": ${String(error)}.`,
+        'Check that the storage adapter supports removeItem().'
+      );
+    }
   }, []);
 
   /**
@@ -70,8 +96,9 @@ export const useTourPersistence = (storage: TourStorage) => {
     async (steps: TourStep[], config?: TourGuideConfig, force = false): Promise<boolean> => {
       const tourId = config?.tourId;
       if (!tourId) {
-        console.warn(
-          'react-native-tour-guide: useTourPersistence requires config.tourId to be set.'
+        warn(
+          'useTourPersistence.startTour() was called without config.tourId, so the tour cannot be remembered and will show every time.',
+          "Pass a stable id: startTour(steps, { tourId: 'onboarding' })."
         );
         startTourRef.current(steps, config);
         return true;
@@ -89,7 +116,9 @@ export const useTourPersistence = (storage: TourStorage) => {
         ...config,
         onTourEnd: (completed: boolean) => {
           if (completed) {
-            markCompleted(tourId);
+            // Fire-and-forget, but never as an unhandled rejection: markCompleted
+            // already swallows and reports storage failures.
+            void markCompleted(tourId);
           }
           originalOnTourEnd?.(completed);
         },

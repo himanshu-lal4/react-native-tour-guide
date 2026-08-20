@@ -27,6 +27,7 @@ npx expo install @wrack/react-native-tour-guide react-native-svg
 ## Quick links
 
 - [Getting started]({{ '/getting-started/' | relative_url }})
+- [Bring your own tooltip UI (design-system integration)]({{ '/custom-tooltip-design-system/' | relative_url }})
 - [How to build a React Native app tour]({{ '/react-native-app-tour/' | relative_url }})
 - [React Native walkthrough guide]({{ '/react-native-walkthrough/' | relative_url }})
 - [Coach marks & feature discovery]({{ '/react-native-coach-marks/' | relative_url }})
