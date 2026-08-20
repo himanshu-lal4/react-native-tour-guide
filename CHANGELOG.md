@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Stability, compatibility and diagnostics pass, plus the declarative / headless / interactive API expansion. No breaking changes to the JS API — but note one **install-time breaking change**: peer dependency ranges were narrowed from `react: *` / `react-native: *` to `react >=18` / `react-native >=0.71` (the code has required these all along — e.g. `gap` styles — so the old ranges were dishonest, not permissive). Apps on older React/RN will now get an install error instead of a runtime break. **Ship this as a major version bump.**
 
+### Added — tracking, analytics & platform integrations
+
+- **`followTarget`** — with `useTourScroll()` wired onto the scrollable, the spotlight and tooltip stay glued to the target while the user scrolls freely (JS-driven, coalesced to one re-measure per frame, snap updates with no chase animation).
+- **`useTourScroll()`** — one hook binds a scrollable to the tour: enables followTarget, gives auto-scroll an exact `onMomentumScrollEnd` settle signal (the polling remains as fallback), and tracks the scroll offset so `getCurrentScrollOffset` is redundant.
+- **Event emitter** — `useTourGuide().events.on('start' | 'stepChange' | 'end' | 'skip' | 'pause' | 'resume', handler)` for analytics; subscribe once instead of threading config callbacks. Dependency-free; throwing handlers are isolated.
+- **Storage auto-detect** — `useTourPersistence()` needs no adapter: MMKV (v2–v4 APIs) then AsyncStorage are detected; an in-memory fallback (with dev warning) keeps the tour working when neither is installed. `detectStorage()` exported for advanced use.
+- **`keepSpotlight`** — a step's hole stays punched out of the backdrop after moving forward past it; dropped again on back-navigation.
+- **Per-platform config values** — `tooltipWidth`, `tooltipOffset`, `triangleSize`, `animationDuration`, `safeZoneOffset` and `motion` accept `{ ios, android, web, default }`; resolved once at startTour (`ResolvedTourGuideConfig` is what you read back).
+- **`waitForInteractions`** — config or per step: measure only after `InteractionManager.runAfterInteractions`, the principled version of guessing `delayBefore`.
+- **`statusBarStyle`** — `'light-content' | 'dark-content' | 'auto'` while the tour runs, restored afterwards via the StatusBar stack (never clobbers the app's own style).
+- **`supportedOrientations`** — forwarded to the iOS Modal, defaulting to all orientations so the overlay rotates with the app.
+- **`tooltipStyles.arrowStyle`** — style the tooltip's arrow/triangle directly.
+
 ### Added — orchestration & spotlight control
 
 - **Named tours** — `defineTour(id, steps, config)` registers tours up front; `startTour('id')` starts them from anywhere (with optional config overrides merged over the stored config); `removeTour(id)` unregisters.

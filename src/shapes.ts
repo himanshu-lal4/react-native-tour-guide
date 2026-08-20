@@ -65,6 +65,27 @@ const computeRectBounds = (target: SpotlightTarget, padding: EdgeInsets) => ({
   height: target.height + padding.top + padding.bottom,
 });
 
+/**
+ * SVG subpath for a uniformly-rounded rectangle (clockwise, closed). Used for
+ * the spotlight cutout and for kept spotlights.
+ */
+export const roundedRectPath = (x: number, y: number, w: number, h: number, r: number): string => {
+  const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+  if (rr <= 0) return `M${x},${y} H${x + w} V${y + h} H${x} Z`;
+  return (
+    `M${x + rr},${y} H${x + w - rr} A${rr},${rr} 0 0 1 ${x + w},${y + rr} ` +
+    `V${y + h - rr} A${rr},${rr} 0 0 1 ${x + w - rr},${y + h} ` +
+    `H${x + rr} A${rr},${rr} 0 0 1 ${x},${y + h - rr} ` +
+    `V${y + rr} A${rr},${rr} 0 0 1 ${x + rr},${y} Z`
+  );
+};
+
+/** The inner (hole) subpath for any shape result. */
+export const shapeInnerPath = (result: ShapeResult): string =>
+  result.kind === 'path'
+    ? result.d
+    : roundedRectPath(result.x, result.y, result.width, result.height, result.rx);
+
 // --- Rounded rect with per-corner radii ---
 
 const computeRoundedRectPath = (

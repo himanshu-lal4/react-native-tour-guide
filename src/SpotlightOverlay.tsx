@@ -3,7 +3,7 @@ import { StyleSheet, View, Animated, Pressable, Dimensions } from 'react-native'
 import Svg, { Rect, Path, Defs, Mask } from 'react-native-svg';
 
 import type { SpotlightMotion, SpotlightStyles, SpotlightTarget } from './types';
-import { computeShape } from './shapes';
+import { computeShape, roundedRectPath } from './shapes';
 import type { SpotlightBorderRadius, SpotlightPadding } from './shapes';
 
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
@@ -69,6 +69,12 @@ export interface SpotlightOverlayProps {
   interactive?: boolean;
   /** How the spotlight travels between steps (default: 'morph') */
   motion?: SpotlightMotion;
+  /**
+   * Additional cutout subpaths that stay punched out of the backdrop —
+   * spotlights kept lit from earlier steps (`step.keepSpotlight`). Purely
+   * visual: press bands and the blur mask only consider the current spotlight.
+   */
+  keptPaths?: string[];
 }
 
 /**
@@ -89,6 +95,7 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
   onSpotlightPress,
   interactive = false,
   motion = 'morph',
+  keptPaths,
 }) => {
   const {
     overlayOpacity = 0.6,
@@ -205,17 +212,6 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
   const [overlayPathD, setOverlayPathD] = useState('');
   const animVals = useRef({ x: 0, y: 0, w: 0, h: 0, rx: 0 });
 
-  const roundedRectSubpath = (x: number, y: number, w: number, h: number, r: number) => {
-    const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
-    if (rr <= 0) return `M${x},${y} H${x + w} V${y + h} H${x} Z`;
-    return (
-      `M${x + rr},${y} H${x + w - rr} A${rr},${rr} 0 0 1 ${x + w},${y + rr} ` +
-      `V${y + h - rr} A${rr},${rr} 0 0 1 ${x + w - rr},${y + h} ` +
-      `H${x + rr} A${rr},${rr} 0 0 1 ${x},${y + h - rr} ` +
-      `V${y + rr} A${rr},${rr} 0 0 1 ${x + rr},${y} Z`
-    );
-  };
-
   // The overlay Modal is statusBarTranslucent / edge-to-edge, so it spans the
   // full PHYSICAL screen — but `screenWidth`/`screenHeight` come from
   // Dimensions.get('window'), which on Android excludes the status/navigation
@@ -226,8 +222,12 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
   const coverWidth = Math.max(screenWidth, physicalScreen.width);
   const coverHeight = Math.max(screenHeight, physicalScreen.height);
 
+  // Kept spotlights from earlier steps are appended as extra holes — the
+  // evenodd fill rule punches every subpath out of the full-screen rect.
+  const keptSuffix = keptPaths && keptPaths.length > 0 ? ` ${keptPaths.join(' ')}` : '';
+
   const buildOverlayPath = (innerSubpath: string) =>
-    `M0,0 H${coverWidth} V${coverHeight} H0 Z ${innerSubpath}`;
+    `M0,0 H${coverWidth} V${coverHeight} H0 Z ${innerSubpath}${keptSuffix}`;
 
   // Keep the overlay path in sync with the animated spotlight (rect shapes).
   // Per-corner (path) shapes set the path directly in the animation effect.
@@ -252,7 +252,7 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
     };
     const flushUpdate = () => {
       const v = animVals.current;
-      const inner = roundedRectSubpath(v.x, v.y, v.w, v.h, v.rx);
+      const inner = roundedRectPath(v.x, v.y, v.w, v.h, v.rx);
       // Fast path: write the path data straight to the native SVG nodes. Both
       // the dark hole and the pulse ring are driven from the SAME string here,
       // so they can never drift apart. Falls back to setState when
@@ -298,7 +298,17 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
       animRx.removeListener(ir);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [usePathRendering, screenWidth, screenHeight, animX, animY, animWidth, animHeight, animRx]);
+  }, [
+    usePathRendering,
+    screenWidth,
+    screenHeight,
+    animX,
+    animY,
+    animWidth,
+    animHeight,
+    animRx,
+    keptSuffix,
+  ]);
 
   // Animation effect
   useEffect(() => {
@@ -321,7 +331,7 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
       animRx.setValue(r.rx);
       animRy.setValue(r.ry);
       animVals.current = { x: r.x, y: r.y, w: r.width, h: r.height, rx: r.rx };
-      const inner = roundedRectSubpath(r.x, r.y, r.width, r.height, r.rx);
+      const inner = roundedRectPath(r.x, r.y, r.width, r.height, r.rx);
       setOverlayPathD(buildOverlayPath(inner));
       // Same source as the dark hole — keeps the pulse border in lockstep.
       setPathD(inner);
@@ -411,6 +421,11 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
         applyRectImmediate(shapeResult);
       }
     });
+    // keptSuffix is intentionally NOT a dep: a kept-paths change must repaint
+    // the path (separate effect below), not replay the whole step transition —
+    // with 'fade' that replay double-blinked the backdrop on every
+    // keepSpotlight step change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     shapeResult,
     motion,
@@ -423,6 +438,15 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
     animationDuration,
     overlayFade,
   ]);
+
+  // Repaint-only path for kept-hole changes: rebuild the overlay path from the
+  // CURRENT inner subpath with the new kept suffix, without touching the
+  // animated values or the transition.
+  useEffect(() => {
+    if (pathD) setOverlayPathD(buildOverlayPath(pathD));
+    // buildOverlayPath closes over keptSuffix; pathD is the current inner.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keptSuffix]);
 
   // Pulse animation
   useEffect(() => {
@@ -451,10 +475,26 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
     return () => loop.stop();
   }, [enablePulse, target, pulseDuration, pulseMinOpacity, pulseMaxOpacity, pulseOpacity]);
 
-  // No target (centered / no-spotlight step): render a plain dimmed backdrop so
-  // the screen is still dimmed and the press handler stays available, instead of
-  // an invisible modal that traps the user. The tooltip renders above this.
+  // No target (centered / no-spotlight step, or the measurement gap between
+  // steps): the screen stays dimmed and the press handler available. Kept
+  // spotlights (keepSpotlight) must survive this branch too — a plain solid
+  // backdrop made accumulated holes vanish on centered steps and blink off
+  // between steps.
   if (!target || !shapeResult || !bounds) {
+    if (keptPaths && keptPaths.length > 0) {
+      const w = Math.max(screenWidth, Dimensions.get('screen').width);
+      const h = Math.max(screenHeight, Dimensions.get('screen').height);
+      const d = `M0,0 H${w} V${h} H0 Z ${keptPaths.join(' ')}`;
+      return (
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+          <Pressable style={StyleSheet.absoluteFill} onPress={onBackdropPress}>
+            <Svg height={h} width={w} style={StyleSheet.absoluteFill}>
+              <Path d={d} fill={overlayColor} fillOpacity={overlayOpacity} fillRule="evenodd" />
+            </Svg>
+          </Pressable>
+        </View>
+      );
+    }
     return (
       <Pressable
         style={[

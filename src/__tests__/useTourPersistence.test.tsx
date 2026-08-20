@@ -25,6 +25,7 @@ const mockTourGuide: TourGuideContextValue = {
   defineTour: jest.fn(),
   removeTour: jest.fn(),
   canStartTour: jest.fn(),
+  events: { on: jest.fn(() => jest.fn()), off: jest.fn() },
   registerTarget: jest.fn(),
   unregisterTarget: jest.fn(),
   getTarget: jest.fn(),

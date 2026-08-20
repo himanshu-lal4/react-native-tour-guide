@@ -1,4 +1,4 @@
-import type { TourGuideConfig, TourStep } from './types';
+import type { ResolvedTourGuideConfig, TourStep } from './types';
 import { isDev, warn } from './dev';
 
 const VALID_POSITIONS = ['top', 'bottom', 'left', 'right', 'auto'];
@@ -20,7 +20,7 @@ const looksLikeRef = (value: unknown): boolean =>
  * explanation — which is the hardest class of bug to diagnose from the outside.
  * Runs only in dev; it is a no-op in production builds.
  */
-export const validateTour = (steps: TourStep[], config?: TourGuideConfig): void => {
+export const validateTour = (steps: TourStep[], config?: ResolvedTourGuideConfig): void => {
   if (!isDev()) return;
 
   if (!Array.isArray(steps)) {
@@ -191,7 +191,7 @@ export const validateTour = (steps: TourStep[], config?: TourGuideConfig): void 
 };
 
 /** Validate the tour-level config. Dev only. */
-const validateConfig = (config?: TourGuideConfig): void => {
+const validateConfig = (config?: ResolvedTourGuideConfig): void => {
   if (!config) return;
 
   if (config.scrollRef !== undefined && !looksLikeRef(config.scrollRef)) {

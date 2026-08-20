@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react';
 
 import type { TourStorage, TourStep, TourGuideConfig } from './types';
 import { useTourGuide } from './TourGuideContext';
+import { detectStorage } from './storage';
 import { warn } from './dev';
 
 const STORAGE_PREFIX = '@tour_guide:';
@@ -11,7 +12,10 @@ const STORAGE_PREFIX = '@tour_guide:';
  * Wraps `startTour` to check if a tour has been completed before,
  * and automatically marks tours as completed when they finish.
  *
- * @param storage - Storage adapter (AsyncStorage, MMKV wrapper, etc.)
+ * @param storage - Optional storage adapter. When omitted, MMKV or
+ * AsyncStorage is auto-detected (in that order); with neither installed, an
+ * in-memory fallback is used and a dev warning explains persistence won't
+ * survive restarts.
  *
  * @example
  * ```tsx
@@ -28,10 +32,13 @@ const STORAGE_PREFIX = '@tour_guide:';
  * startTour(steps, { tourId: 'onboarding' });
  * ```
  */
-export const useTourPersistence = (storage: TourStorage) => {
+export const useTourPersistence = (storage?: TourStorage) => {
   const tourGuide = useTourGuide();
-  const storageRef = useRef(storage);
-  storageRef.current = storage;
+  // No adapter passed → auto-detect MMKV or AsyncStorage (memory fallback with
+  // a dev warning when neither is installed).
+  const resolved = storage ?? detectStorage().adapter;
+  const storageRef = useRef(resolved);
+  storageRef.current = resolved;
 
   // Stable ref to the underlying startTour to avoid re-creating our wrapper on every render
   const startTourRef = useRef(tourGuide.startTour);

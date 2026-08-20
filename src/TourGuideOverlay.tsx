@@ -1,5 +1,14 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import { Dimensions, Modal, Platform, StyleSheet, View, findNodeHandle } from 'react-native';
+import {
+  Dimensions,
+  InteractionManager,
+  Modal,
+  Platform,
+  StatusBar,
+  StyleSheet,
+  View,
+  findNodeHandle,
+} from 'react-native';
 
 import { useTourGuide } from './TourGuideContext';
 import SpotlightOverlay from './SpotlightOverlay';
@@ -11,10 +20,12 @@ import {
   resolveInsets,
   resolveSafeAreaInsets,
   scrollRefToY,
+  isLightColor,
 } from './utils';
+import { computeShape, shapeInnerPath } from './shapes';
 import { announceStep } from './accessibility';
 import { warnOnce } from './dev';
-import type { BackdropBehavior } from './types';
+import type { BackdropBehavior, SpotlightTarget, TourStep } from './types';
 
 const isWeb = Platform.OS === 'web';
 
@@ -135,6 +146,9 @@ const TourGuideOverlay: React.FC = () => {
     prevStep,
     skipTour,
     getTarget,
+    __subscribeScroll,
+    __subscribeScrollEnd,
+    __getTrackedScrollY,
     __registerOverlay,
   } = useTourGuide();
 
@@ -199,6 +213,10 @@ const TourGuideOverlay: React.FC = () => {
 
   // Refs for cleanup
   const delayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Retry timer for the plain (non-scroll) measurement loop — tracked so step
+  // changes can cancel a pending 0x0 retry instead of letting a stale closure
+  // fire into the next step.
+  const measureRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const measureRetryCount = useRef(0);
 
@@ -210,6 +228,11 @@ const TourGuideOverlay: React.FC = () => {
   // to null at the start of each settle loop so the first reading is never
   // mistaken for "settled" against a stale value from a previous step.
   const lastSettleY = useRef<number | null>(null);
+  // Pending settle-poll timer. Kept in a ref so a momentum-scroll-end signal
+  // (via useTourScroll) can preempt the polling and commit immediately.
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Pending InteractionManager handle (waitForInteractions), cancellable on step change.
+  const interactionHandle = useRef<{ cancel: () => void } | null>(null);
   // Guards setState after unmount inside async measure callbacks.
   const isMounted = useRef(true);
   useEffect(() => {
@@ -224,6 +247,13 @@ const TourGuideOverlay: React.FC = () => {
   // non-interactive backdrop with nothing to tap.
   const [centeredFallback, setCenteredFallback] = useState(false);
 
+  // Follow updates are OVERLAY-LOCAL state: committing each per-scroll-frame
+  // measurement through the provider would re-render every useTourGuide()
+  // consumer at up to 60fps — the exact jank followTarget exists to avoid.
+  // Renders read followLayout ?? targetLayout; the provider only ever sees the
+  // real measurement commits.
+  const [followLayout, setFollowLayout] = useState<SpotlightTarget | null>(null);
+
   // Which step's before() hook has already run. Keyed by index+id so the hook
   // fires once per step VISIT: the main effect legitimately re-runs for the
   // same step (setStepCompleted rebuilds the step object; rotation recreates
@@ -237,12 +267,46 @@ const TourGuideOverlay: React.FC = () => {
     beforeRanKey.current = null;
   }, [config]);
 
+  // Kept spotlights (step.keepSpotlight): index → inner subpath. Rebuilt into
+  // the keptPaths array whenever the map changes; reconciled on step changes
+  // so navigating back un-keeps everything at or after the new index.
+  const keptShapes = useRef<Map<number, string>>(new Map());
+  const [keptPaths, setKeptPaths] = useState<string[]>([]);
+  // The last layout actually committed for the current step, with everything
+  // needed to reconstruct its cutout shape when the tour moves on.
+  const lastCommitted = useRef<{
+    index: number;
+    layout: SpotlightTarget;
+    step: TourStep;
+  } | null>(null);
+
   // Mirrors for the watchdog (it runs in a timeout and must read fresh values).
   const targetLayoutRef = useRef(targetLayout);
   targetLayoutRef.current = targetLayout;
   const centeredFallbackRef = useRef(centeredFallback);
   centeredFallbackRef.current = centeredFallback;
   const watchdogTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // --- Status bar control while the tour is active ---
+  useEffect(() => {
+    const style = config?.statusBarStyle;
+    if (!isActive || !style) return undefined;
+    // react-native-web's StatusBar ships only the set* no-ops — the stack API
+    // does not exist there and would throw at tour start.
+    if (isWeb || typeof StatusBar.pushStackEntry !== 'function') return undefined;
+    let resolved: 'light-content' | 'dark-content' = style === 'auto' ? 'light-content' : style;
+    if (style === 'auto') {
+      // Light backdrop → dark icons; dark (or unparseable) backdrop → light.
+      const backdropIsLight =
+        isLightColor(config?.spotlightStyles?.overlayColor ?? 'black') === true;
+      resolved = backdropIsLight ? 'dark-content' : 'light-content';
+    }
+    // push/pop keeps whatever style the app had — no unreadable global reset.
+    const entry = StatusBar.pushStackEntry({ barStyle: resolved, animated: true });
+    return () => {
+      StatusBar.popStackEntry(entry);
+    };
+  }, [isActive, config?.statusBarStyle, config?.spotlightStyles?.overlayColor]);
 
   // --- Orientation change handling ---
   useEffect(() => {
@@ -274,9 +338,11 @@ const TourGuideOverlay: React.FC = () => {
     return (
       currentStepData?.scrollToTarget?.getCurrentScrollOffset?.() ??
       config?.getCurrentScrollOffset?.() ??
+      // Offset observed through useTourScroll, when the consumer wired it.
+      __getTrackedScrollY?.() ??
       0
     );
-  }, [currentStepData, config]);
+  }, [currentStepData, config, __getTrackedScrollY]);
 
   // A target we can never measure (a ref that never reaches a host component,
   // or one pointing at something without a measure API) must not leave the user
@@ -284,6 +350,8 @@ const TourGuideOverlay: React.FC = () => {
   const fallBackToCentered = useCallback(
     (stepId: string, reason: string) => {
       if (!isMounted.current) return;
+      // Whatever loop ended here, the settle phase is over.
+      settleTimer.current = null;
       warnOnce(
         `Step "${stepId}" ${reason}, so it cannot be highlighted. Showing a centered tooltip instead.`,
         'Attach targetRef to a React Native host component (View, Text, Pressable…). Custom components must forward the ref with React.forwardRef.'
@@ -301,6 +369,7 @@ const TourGuideOverlay: React.FC = () => {
   // --- Measure target with retry logic ---
   const measureTarget = useCallback(
     (epoch: number, retryCount = 0) => {
+      if (epoch !== stepEpoch.current || !isMounted.current) return;
       if (!currentStepData) return;
       if (!effectiveTargetRef?.current) {
         // No target ref — show tooltip without spotlight
@@ -319,8 +388,11 @@ const TourGuideOverlay: React.FC = () => {
             setTargetLayout({ x, y: y + measureTopOffset, width, height });
             measureRetryCount.current = 0;
           } else if (retryCount < MAX_MEASURE_RETRIES) {
-            // Element not laid out yet — retry
-            setTimeout(() => measureTarget(epoch, retryCount + 1), MEASURE_RETRY_DELAY);
+            // Element not laid out yet — retry (tracked, so cleanup can cancel)
+            measureRetryTimer.current = setTimeout(
+              () => measureTarget(epoch, retryCount + 1),
+              MEASURE_RETRY_DELAY
+            );
           } else {
             // Don't trap the user — fall back to a centered, dismissible tooltip.
             fallBackToCentered(
@@ -349,8 +421,15 @@ const TourGuideOverlay: React.FC = () => {
   // prevents latching onto a mid-animation position (the "left behind" bug).
   const measureUntilSettled = useCallback(
     (epoch: number, attempt = 0) => {
+      // A stale closure (older step, or fired after unmount) must do nothing —
+      // its unguarded setTargetLayout(null) used to wipe the CURRENT step's
+      // committed layout.
+      if (epoch !== stepEpoch.current || !isMounted.current) return;
       if (!currentStepData) return;
       if (!effectiveTargetRef?.current) {
+        // F4: the settle loop is over for this path — clear the pending marker
+        // so followTarget and the scroll-end signal don't act on a dead timer.
+        settleTimer.current = null;
         setTargetLayout(null);
         return;
       }
@@ -370,11 +449,15 @@ const TourGuideOverlay: React.FC = () => {
 
             if (settled || attempt >= MAX_SETTLE_POLLS) {
               // Scroll has come to rest — reveal the highlight at its final spot.
+              settleTimer.current = null;
               setTargetLayout({ x, y: adjustedY, width, height });
               measureRetryCount.current = 0;
             } else {
               // Still moving — keep polling without showing anything yet.
-              setTimeout(() => measureUntilSettled(epoch, attempt + 1), SETTLE_POLL_INTERVAL);
+              settleTimer.current = setTimeout(
+                () => measureUntilSettled(epoch, attempt + 1),
+                SETTLE_POLL_INTERVAL
+              );
             }
           } else if (attempt < MAX_SETTLE_POLLS) {
             // Element not laid out yet — keep trying.
@@ -454,7 +537,10 @@ const TourGuideOverlay: React.FC = () => {
                 }
                 setTargetLayout(null);
                 lastSettleY.current = null;
-                setTimeout(() => measureUntilSettled(epoch), animated ? 100 : 50);
+                settleTimer.current = setTimeout(
+                  () => measureUntilSettled(epoch),
+                  animated ? 100 : 50
+                );
               },
               () => {
                 // measureLayout failed (detached / cross-tree) — measure in place.
@@ -500,7 +586,7 @@ const TourGuideOverlay: React.FC = () => {
         // is what stops the spotlight flickering/chasing during the scroll.
         setTargetLayout(null);
         lastSettleY.current = null;
-        setTimeout(() => measureUntilSettled(epoch), animated ? 100 : 50);
+        settleTimer.current = setTimeout(() => measureUntilSettled(epoch), animated ? 100 : 50);
         return;
       }
 
@@ -612,7 +698,7 @@ const TourGuideOverlay: React.FC = () => {
           // target's new position — no flicker, no chasing the moving target.
           setTargetLayout(null);
           lastSettleY.current = null;
-          setTimeout(() => measureUntilSettled(epoch), animated ? 100 : 50);
+          settleTimer.current = setTimeout(() => measureUntilSettled(epoch), animated ? 100 : 50);
         }
       );
 
@@ -655,6 +741,16 @@ const TourGuideOverlay: React.FC = () => {
     if (!isActive || isPaused || !currentStepData) {
       // Tour ended or paused — the next tour (or resume) runs before() afresh.
       beforeRanKey.current = null;
+      if (!isActive) {
+        // Unconditional: a leaked lastCommitted from tour A (single
+        // keepSpotlight step, nothing accumulated) would otherwise punch A's
+        // stale rectangle into tour B's backdrop.
+        lastCommitted.current = null;
+        if (keptShapes.current.size > 0) {
+          keptShapes.current.clear();
+          setKeptPaths([]);
+        }
+      }
       return undefined;
     }
 
@@ -662,6 +758,65 @@ const TourGuideOverlay: React.FC = () => {
     // step is ignored, and clear the centered fallback from the previous step.
     const epoch = ++stepEpoch.current;
     setCenteredFallback(false);
+    setFollowLayout(null);
+
+    // keepSpotlight reconciliation: drop kept holes at or after the new index
+    // (going back un-keeps), and keep the step we just moved FORWARD past if it
+    // asked to stay lit.
+    {
+      const map = keptShapes.current;
+      let changed = false;
+      for (const key of [...map.keys()]) {
+        if (key >= currentStep) {
+          map.delete(key);
+          changed = true;
+        }
+      }
+      const prevCommit = lastCommitted.current;
+      if (
+        prevCommit &&
+        prevCommit.index < currentStep &&
+        prevCommit.step.keepSpotlight &&
+        !map.has(prevCommit.index)
+      ) {
+        const radius =
+          prevCommit.step.spotlightBorderRadius ??
+          extractBorderRadius(
+            prevCommit.step.targetStyle ??
+              (prevCommit.step.targetId ? getTarget(prevCommit.step.targetId)?.style : undefined),
+            prevCommit.layout
+          );
+        const shape = computeShape(
+          prevCommit.layout,
+          prevCommit.step.spotlightPadding ?? 0,
+          radius
+        );
+        // A custom maskPath must survive being kept — otherwise a star-shaped
+        // spotlight degrades to a rounded rect the moment the tour moves on.
+        let inner = shapeInnerPath(shape);
+        const maskPath = config?.spotlightStyles?.maskPath;
+        if (maskPath) {
+          const autoBounds =
+            shape.kind === 'rect'
+              ? { x: shape.x, y: shape.y, width: shape.width, height: shape.height }
+              : shape.bounds;
+          try {
+            const d = maskPath({
+              target: prevCommit.layout,
+              bounds: autoBounds,
+              screenWidth: screenDimensions.width,
+              screenHeight: screenDimensions.height,
+            });
+            if (typeof d === 'string' && d.length > 0) inner = d;
+          } catch {
+            // Fall back to the automatic shape, same as the live spotlight does.
+          }
+        }
+        map.set(prevCommit.index, inner);
+        changed = true;
+      }
+      if (changed) setKeptPaths([...map.values()]);
+    }
 
     const startMeasurement = (attempt = 0) => {
       if (epoch !== stepEpoch.current || !isMounted.current) return;
@@ -763,13 +918,28 @@ const TourGuideOverlay: React.FC = () => {
       }
     };
 
+    // Optionally let navigation/layout animations finish before measuring —
+    // the principled version of guessing a delayBefore.
+    const beginAfterInteractions = () => {
+      const wants = currentStepData.waitForInteractions ?? config?.waitForInteractions;
+      if (!wants) {
+        begin();
+        return;
+      }
+      interactionHandle.current = InteractionManager.runAfterInteractions(() => {
+        interactionHandle.current = null;
+        if (epoch !== stepEpoch.current || !isMounted.current) return;
+        begin();
+      });
+    };
+
     // Apply delay if configured
     const delay = currentStepData.delayBefore ?? 0;
     if (delay > 0) {
-      delayTimer.current = setTimeout(begin, delay);
+      delayTimer.current = setTimeout(beginAfterInteractions, delay);
     } else {
       // Small delay to ensure layout is ready
-      delayTimer.current = setTimeout(begin, 100);
+      delayTimer.current = setTimeout(beginAfterInteractions, 100);
     }
 
     return () => {
@@ -785,6 +955,18 @@ const TourGuideOverlay: React.FC = () => {
         clearTimeout(watchdogTimer.current);
         watchdogTimer.current = null;
       }
+      if (settleTimer.current) {
+        clearTimeout(settleTimer.current);
+        settleTimer.current = null;
+      }
+      if (interactionHandle.current) {
+        interactionHandle.current.cancel();
+        interactionHandle.current = null;
+      }
+      if (measureRetryTimer.current) {
+        clearTimeout(measureRetryTimer.current);
+        measureRetryTimer.current = null;
+      }
     };
   }, [
     isActive,
@@ -797,10 +979,94 @@ const TourGuideOverlay: React.FC = () => {
     setTargetLayout,
   ]);
 
+  // A fresh real measurement supersedes any stale follow position.
+  useEffect(() => {
+    setFollowLayout(null);
+  }, [targetLayout]);
+
+  // What renders: the live follow position while the user scrolls, else the
+  // last committed measurement.
+  const renderLayout = followLayout ?? targetLayout;
+
+  // Remember the committed layout for keepSpotlight bookkeeping — including
+  // follow updates, so a kept hole lands where the target actually IS.
+  useEffect(() => {
+    const layout = followLayout ?? targetLayout;
+    if (layout && currentStepData) {
+      lastCommitted.current = { index: currentStep, layout, step: currentStepData };
+    }
+  }, [targetLayout, followLayout, currentStep, currentStepData]);
+
   // The step is on screen once the target is measured OR we've committed to a
   // centered tooltip. Both paths must drive announcements and auto-advance —
   // gating on targetLayout alone silently disabled them for centered steps.
   const isStepVisible = Boolean(targetLayout) || centeredFallback;
+
+  // --- Exact settle signal (useTourScroll) ---
+  // The consumer's onMomentumScrollEnd tells us the programmatic scroll is
+  // done: cancel the position polling and commit the final measurement now.
+  useEffect(() => {
+    if (!__subscribeScrollEnd) return undefined;
+    return __subscribeScrollEnd(() => {
+      // Only act while a settle poll is actually pending — otherwise this is a
+      // user fling with no tour scroll in flight.
+      if (settleTimer.current === null || !isMounted.current) return;
+      clearTimeout(settleTimer.current);
+      settleTimer.current = null;
+      // Poll IMMEDIATELY but keep the normal settle rules (two consecutive
+      // matching readings, full 0x0 retry budget). A force-commit here had two
+      // failure modes: a virtualized row measuring 0x0 the instant the scroll
+      // stopped went straight to the centered fallback, and a USER fling ending
+      // inside the window committed a mid-flight position. With settle rules,
+      // a genuine end matches the previous reading and commits on the spot; a
+      // moving target simply keeps polling.
+      measureUntilSettled(stepEpoch.current, 1);
+    });
+  }, [__subscribeScrollEnd, measureUntilSettled]);
+
+  // --- followTarget: keep the highlight glued to the target while the user
+  // scrolls freely (requires useTourScroll to be wired). JS-driven: re-measure
+  // on each reported scroll event, coalesced to one measurement per frame, and
+  // committed with motion 'none' so the spotlight doesn't chase-animate. ---
+  const followFrame = useRef(false);
+  useEffect(() => {
+    if (!isActive || isPaused || !config?.followTarget || !__subscribeScroll) return undefined;
+    if (!currentStepData || currentStepData.targetRegion) return undefined;
+
+    return __subscribeScroll(() => {
+      if (followFrame.current) return;
+      followFrame.current = true;
+      const schedule =
+        typeof requestAnimationFrame === 'function'
+          ? requestAnimationFrame
+          : (cb: () => void) => setTimeout(cb, 16);
+      schedule(() => {
+        followFrame.current = false;
+        const epoch = stepEpoch.current;
+        if (!isMounted.current || !effectiveTargetRef?.current) return;
+        // Don't fight the programmatic-scroll settle logic; it owns the layout
+        // until it commits.
+        if (settleTimer.current !== null) return;
+        measureElement(
+          effectiveTargetRef as { current: Record<string, unknown> },
+          (x: number, y: number, width: number, height: number) => {
+            if (epoch !== stepEpoch.current || !isMounted.current) return;
+            if (width > 0 && height > 0) {
+              setFollowLayout({ x, y: y + measureTopOffset, width, height });
+            }
+          }
+        );
+      });
+    });
+  }, [
+    isActive,
+    isPaused,
+    config?.followTarget,
+    __subscribeScroll,
+    currentStepData,
+    effectiveTargetRef,
+    measureTopOffset,
+  ]);
 
   // --- Accessibility announcement ---
   useEffect(() => {
@@ -864,10 +1130,10 @@ const TourGuideOverlay: React.FC = () => {
     }
 
     if (preferred === 'auto' || config?.autoPositionTooltip !== false) {
-      if (targetLayout) {
+      if (renderLayout) {
         // If user set explicit position (not 'auto'), use it as a hint but validate
         const autoResult = computeTooltipPosition({
-          target: targetLayout,
+          target: renderLayout,
           screenWidth: screenDimensions.width,
           screenHeight: screenDimensions.height,
           tooltipWidth: config?.tooltipWidth ?? 320,
@@ -886,18 +1152,18 @@ const TourGuideOverlay: React.FC = () => {
                 return (
                   screenDimensions.height -
                     insets.bottom -
-                    (targetLayout.y + targetLayout.height + offset) >=
+                    (renderLayout.y + renderLayout.height + offset) >=
                   tooltipHeight
                 );
               case 'top':
-                return targetLayout.y - offset - insets.top >= tooltipHeight;
+                return renderLayout.y - offset - insets.top >= tooltipHeight;
               case 'left':
-                return targetLayout.x - offset - insets.left >= (config?.tooltipWidth ?? 320) * 0.6;
+                return renderLayout.x - offset - insets.left >= (config?.tooltipWidth ?? 320) * 0.6;
               case 'right':
                 return (
                   screenDimensions.width -
                     insets.right -
-                    (targetLayout.x + targetLayout.width + offset) >=
+                    (renderLayout.x + renderLayout.width + offset) >=
                   (config?.tooltipWidth ?? 320) * 0.6
                 );
               default:
@@ -918,8 +1184,8 @@ const TourGuideOverlay: React.FC = () => {
   const tooltipProps = {
     title: currentStepData.title,
     description: currentStepData.description,
-    position: targetLayout
-      ? { x: targetLayout.x, y: targetLayout.y }
+    position: renderLayout
+      ? { x: renderLayout.x, y: renderLayout.y }
       : {
           // Centered (no-target) step: center within the safe area.
           x: screenDimensions.width / 2,
@@ -928,8 +1194,8 @@ const TourGuideOverlay: React.FC = () => {
     tooltipPosition: resolvedTooltipPosition,
     currentStep,
     totalSteps: activeSteps.length,
-    targetHeight: targetLayout?.height ?? 0,
-    targetWidth: targetLayout?.width ?? 0,
+    targetHeight: renderLayout?.height ?? 0,
+    targetWidth: renderLayout?.width ?? 0,
     onNext: nextStep,
     onPrev: currentStep > 0 ? prevStep : undefined,
     onSkip: skipTour,
@@ -950,23 +1216,27 @@ const TourGuideOverlay: React.FC = () => {
   // pixel radius — this is what keeps circular targets round instead of square.
   const effectiveBorderRadius =
     currentStepData.spotlightBorderRadius ??
-    extractBorderRadius(effectiveTargetStyle, targetLayout ?? undefined);
+    extractBorderRadius(effectiveTargetStyle, renderLayout ?? undefined);
 
   // --- Shared spotlight props ---
   const spotlightProps = {
-    target: targetLayout,
+    target: renderLayout,
     padding: currentStepData.spotlightPadding,
     borderRadius: effectiveBorderRadius,
     styles: config?.spotlightStyles,
     screenWidth: screenDimensions.width,
     screenHeight: screenDimensions.height,
     animationDuration: config?.animationDuration,
-    motion: currentStepData.motion ?? config?.motion,
+    // While followTarget is live-tracking, position updates snap (no tween) —
+    // an animated chase would lag a frame behind the finger.
+    motion: followLayout ? ('none' as const) : (currentStepData.motion ?? config?.motion),
     onBackdropPress,
     onSpotlightPress: currentStepData.onSpotlightPress,
     // Touches pass through the hole to the real element (inline mode only —
     // in a Modal there is nothing underneath to receive them).
     interactive: currentStepData.interactive === true && config?.overlayMode === 'inline',
+    // Spotlights kept lit from earlier keepSpotlight steps.
+    keptPaths,
   };
 
   // Show the tooltip once the target is measured, or immediately for a
@@ -1004,6 +1274,18 @@ const TourGuideOverlay: React.FC = () => {
       animationType="fade"
       statusBarTranslucent
       navigationBarTranslucent
+      // iOS intersects these with the app's own allowed orientations, so the
+      // full-list default just means "rotate with the app" instead of the
+      // Modal refusing to leave portrait.
+      supportedOrientations={
+        config?.supportedOrientations ?? [
+          'portrait',
+          'portrait-upside-down',
+          'landscape',
+          'landscape-left',
+          'landscape-right',
+        ]
+      }
       onRequestClose={skipTour}
     >
       <SpotlightOverlay {...spotlightProps} />
