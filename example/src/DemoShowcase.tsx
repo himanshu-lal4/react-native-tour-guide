@@ -129,6 +129,118 @@ const mini = StyleSheet.create({
   nextText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
 });
 
+// A rounded speech bubble — bright, friendly, nothing like the built-in.
+function BubbleTooltip({ title, description, position, targetHeight, onNext }: TooltipProps) {
+  const below = position.y < 420;
+  const top = below ? position.y + (targetHeight ?? 0) + 16 : position.y - 118;
+  return (
+    <Pressable onPress={onNext} style={[bubble.wrap, { top }]}>
+      <View style={bubble.card}>
+        <Text style={bubble.title}>{title}</Text>
+        <Text style={bubble.text}>{description}</Text>
+        <Text style={bubble.hint}>tap to continue →</Text>
+      </View>
+      <View style={[bubble.tail, below ? bubble.tailUp : bubble.tailDown]} />
+    </Pressable>
+  );
+}
+
+const bubble = StyleSheet.create({
+  wrap: { position: 'absolute', left: 24, right: 24 },
+  card: {
+    backgroundColor: '#F59E0B',
+    borderRadius: 22,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+  },
+  title: { fontSize: 15, fontWeight: '800', color: '#1F2937' },
+  text: { fontSize: 13, color: '#3F3117', marginTop: 3, lineHeight: 18 },
+  hint: { fontSize: 11, fontWeight: '700', color: '#78350F', marginTop: 8 },
+  tail: {
+    position: 'absolute',
+    left: 34,
+    width: 16,
+    height: 16,
+    backgroundColor: '#F59E0B',
+    transform: [{ rotate: '45deg' }],
+  },
+  tailUp: { top: -6 },
+  tailDown: { bottom: -6 },
+});
+
+// A dark "dev console" tooltip — monospace, terminal chrome.
+function ConsoleTooltip({ title, description, position, targetHeight, onNext, onSkip }: TooltipProps) {
+  return (
+    <View style={[cons.card, { top: position.y + (targetHeight ?? 0) + 16 }]}>
+      <View style={cons.bar}>
+        <View style={[cons.dot, { backgroundColor: '#FF5F57' }]} />
+        <View style={[cons.dot, { backgroundColor: '#FEBC2E' }]} />
+        <View style={[cons.dot, { backgroundColor: '#28C840' }]} />
+        <Text style={cons.barTitle}>tooltip.tsx — yours</Text>
+      </View>
+      <Text style={cons.line}>
+        <Text style={cons.prompt}>$ </Text>
+        <Text style={cons.cmd}>{title}</Text>
+      </Text>
+      <Text style={cons.out}>{description}</Text>
+      <View style={cons.row}>
+        <Pressable onPress={onSkip}>
+          <Text style={cons.link}>skip()</Text>
+        </Pressable>
+        <Pressable onPress={onNext}>
+          <Text style={[cons.link, cons.linkHot]}>next()</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const cons = StyleSheet.create({
+  card: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    backgroundColor: '#0D1117',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#30363D',
+    overflow: 'hidden',
+  },
+  bar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#161B22',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  barTitle: { color: '#8B949E', fontSize: 11, marginLeft: 6, fontWeight: '600' },
+  line: { paddingHorizontal: 14, paddingTop: 10, fontSize: 13 },
+  prompt: { color: '#7EE787', fontWeight: '700' },
+  cmd: { color: '#E6EDF3', fontWeight: '700' },
+  out: { color: '#8B949E', fontSize: 12.5, lineHeight: 18, paddingHorizontal: 14, paddingTop: 4 },
+  row: { flexDirection: 'row', justifyContent: 'flex-end', gap: 18, padding: 12 },
+  link: { color: '#8B949E', fontSize: 13, fontWeight: '700' },
+  linkHot: { color: '#79C0FF' },
+});
+
+// Hexagon cutout for the maskPath step — any silhouette becomes the spotlight.
+const hexagonMask = ({
+  bounds,
+}: {
+  bounds: { x: number; y: number; width: number; height: number };
+}): string => {
+  const cx = bounds.x + bounds.width / 2;
+  const cy = bounds.y + bounds.height / 2;
+  const r = Math.max(bounds.width, bounds.height) / 2 + 6;
+  const pts = Array.from({ length: 6 }, (_, i) => {
+    const a = -Math.PI / 2 + (i / 6) * Math.PI * 2;
+    return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`;
+  });
+  return `M${pts.join(' L')} Z`;
+};
+
 const TABS = ['Home', 'Explore', 'Alerts', 'Profile'];
 const LIST = Array.from({ length: 10 }, (_, i) => `List item ${i + 1}`);
 
@@ -145,6 +257,7 @@ function Demo() {
   const { scrollProps } = useTourScroll();
 
   const tapRef = useRef(null);
+  const hexRef = useRef(null);
   const ticketRef = useRef(null);
   const gridRef = useRef(null);
   const lastRowRef = useRef(null);
@@ -161,26 +274,28 @@ function Demo() {
       id: 'avatar',
       targetId: 'avatar', // declarative — <TourTarget id="avatar"> below, no refs
       title: 'Any shape, zero config',
-      description:
-        'The spotlight reads each target’s real border radius — this circle stays a perfect circle.',
+      description: 'The spotlight reads each target’s real radius — a perfect circle stays perfect.',
       tooltipPosition: 'bottom',
+      renderTooltip: (props) => <BubbleTooltip {...props} />, // custom tooltip #1
       autoAdvance: auto,
     },
     {
       id: 'hero',
       targetId: 'hero',
-      title: 'Edge-to-edge precision',
+      title: 'The built-in tooltip',
       description:
-        'Corners matched exactly, cutout hugging the card — and the spotlight MORPHS between steps.',
+        'Steps without a custom renderer get this themeable tooltip — dots, buttons, the lot.',
       autoAdvance: auto,
     },
     {
       id: 'tap',
       targetRef: tapRef,
-      title: 'Interactive steps',
-      description: 'This button is really tappable through the spotlight — go on, tap it.',
+      title: 'tap the real button',
+      description: 'interactive: true — touches pass through the spotlight. pulse: on.',
       targetStyle: { borderRadius: 999 },
       interactive: true,
+      renderTooltip: (props) => <ConsoleTooltip {...props} />, // custom tooltip #2
+      spotlightStyles: { enablePulse: true }, // pulse just for this step
       autoAdvance: auto,
     },
     {
@@ -188,21 +303,36 @@ function Demo() {
       targetRef: ticketRef,
       title: 'Your Figma design, our engine',
       description:
-        'This tooltip is 100% custom UI — the library still measures, places and sequences. (Corners matched one by one.)',
+        'A third custom tooltip — and a per-step overlay tint. Corners matched one by one.',
       targetStyle: {
         borderTopLeftRadius: 28,
         borderTopRightRadius: 8,
         borderBottomRightRadius: 28,
         borderBottomLeftRadius: 8,
       },
-      renderTooltip: (props) => <MiniTooltip {...props} />,
+      renderTooltip: (props) => <MiniTooltip {...props} />, // custom tooltip #3
+      // Custom overlay for THIS step only: deep violet, heavier dim.
+      spotlightStyles: { overlayColor: '#2E1065', overlayOpacity: 0.85 },
+      autoAdvance: auto,
+    },
+    {
+      id: 'hex',
+      targetRef: hexRef,
+      title: 'maskPath: any silhouette',
+      description: 'This hexagon cutout is a custom SVG path — draw any spotlight you like.',
+      renderTooltip: (props) => <ConsoleTooltip {...props} />,
+      spotlightStyles: {
+        maskPath: hexagonMask,
+        enablePulse: true,
+        pulseColor: '#F59E0B', // amber pulse, just here
+      },
       autoAdvance: auto,
     },
     {
       id: 'grid',
       targetRef: gridRef,
       title: 'Pick your motion',
-      description: 'That arrival was motion: “bounce”. Every step can choose morph, bounce or fade.',
+      description: 'That arrival was motion: “bounce”. morph, bounce, fade or none — per step.',
       targetStyle: { borderRadius: 20 },
       motion: 'bounce',
       autoAdvance: auto,
@@ -212,7 +342,7 @@ function Demo() {
       targetRef: lastRowRef,
       title: 'Off-screen? No problem',
       description:
-        'This row was below the fold — the tour scrolled to it and waited for the scroll to settle. Scroll yourself: the highlight follows.',
+        'This row was below the fold — auto-scrolled, settled, highlighted. Scroll yourself: it follows.',
       targetStyle: { borderRadius: 14 },
       autoAdvance: auto ? auto + 800 : undefined,
     },
@@ -220,10 +350,10 @@ function Demo() {
       id: 'tabs',
       targetRef: tabRef,
       title: 'Edge-aware, always',
-      description:
-        'Faded in with motion: “fade” — and at the screen edge the tooltip flips above the target on its own.',
+      description: 'Faded in with motion: “fade” — and the tooltip flips above the edge on its own.',
       targetStyle: { borderRadius: 18 },
       motion: 'fade',
+      renderTooltip: (props) => <BubbleTooltip {...props} />, // custom, placed above
       autoAdvance: auto,
     },
   ];
@@ -246,7 +376,7 @@ function Demo() {
     extraInsets: { bottom: 72 },
     spotlightStyles: {
       ...theme.spotlightStyles,
-      enablePulse: true,
+      // Pulse is opt-in PER STEP via step.spotlightStyles (steps 3 and 5).
       pulseColor: '#FFFFFF',
       pulseWidth: 2,
       pulseDuration: 1400,
@@ -298,7 +428,7 @@ function Demo() {
               <Text style={s.heroTitle}>Every step highlights one feature</Text>
               <View style={s.heroRow}>
                 <View style={s.heroPill}>
-                  <Text style={s.heroPillText}>7 steps</Text>
+                  <Text style={s.heroPillText}>8 steps</Text>
                 </View>
                 <Text style={s.heroHint}>sit back — it plays itself</Text>
               </View>
@@ -338,8 +468,13 @@ function Demo() {
           <View ref={gridRef} collapsable={false} style={s.grid}>
             <Text style={s.gridTitle}>Works over any layout</Text>
             <View style={s.gridRow}>
-              {['◐', '◱', '◮', '●'].map((g) => (
-                <View key={g} style={s.gridCell}>
+              {['●', '⬢', '★', '◱'].map((g, i) => (
+                <View
+                  key={g}
+                  ref={i === 1 ? hexRef : undefined}
+                  collapsable={false}
+                  style={s.gridCell}
+                >
                   <Text style={s.gridGlyph}>{g}</Text>
                 </View>
               ))}

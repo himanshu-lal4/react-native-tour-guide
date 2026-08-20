@@ -152,6 +152,12 @@ export interface TourStep {
   renderTooltip?: (props: TooltipProps) => ReactNode;
   /** Spotlight transition into this step (overrides config.motion) */
   motion?: SpotlightMotion;
+  /**
+   * Per-step spotlight styling, merged over `config.spotlightStyles` — change
+   * the overlay color/opacity, toggle the pulse, or swap the `maskPath` for
+   * just this step.
+   */
+  spotlightStyles?: SpotlightStyles;
   /** Wait for InteractionManager before measuring this step (overrides config) */
   waitForInteractions?: boolean;
   /**

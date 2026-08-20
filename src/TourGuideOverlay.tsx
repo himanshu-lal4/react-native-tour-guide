@@ -25,7 +25,7 @@ import {
 import { computeShape, shapeInnerPath } from './shapes';
 import { announceStep } from './accessibility';
 import { warnOnce } from './dev';
-import type { BackdropBehavior, SpotlightTarget, TourStep } from './types';
+import type { BackdropBehavior, SpotlightStyles, SpotlightTarget, TourStep } from './types';
 
 const isWeb = Platform.OS === 'web';
 
@@ -303,6 +303,8 @@ const TourGuideOverlay: React.FC = () => {
     radius: ReturnType<typeof extractBorderRadius> | number;
     /** Tracked scroll offset (useTourScroll) when captured, if available */
     scrollYAtCapture?: number;
+    /** The capturing step's own maskPath, if it had one */
+    maskPath?: SpotlightStyles['maskPath'];
   }
   const keptShapes = useRef<Map<number, KeptEntry>>(new Map());
   const [keptVersion, setKeptVersion] = useState(0);
@@ -827,6 +829,7 @@ const TourGuideOverlay: React.FC = () => {
           // No scroll reported yet ⇒ the offset baseline is 0, not "unknown" —
           // otherwise a hole captured before the first scroll never translates.
           scrollYAtCapture: __getTrackedScrollY?.() ?? 0,
+          maskPath: prevCommit.step.spotlightStyles?.maskPath,
         });
         changed = true;
       }
@@ -1012,8 +1015,8 @@ const TourGuideOverlay: React.FC = () => {
   const keptPaths = useMemo(() => {
     if (keptShapes.current.size === 0) return [];
     const nowY = __getTrackedScrollY?.() ?? 0;
-    const maskPath = config?.spotlightStyles?.maskPath;
     return [...keptShapes.current.values()].map((entry) => {
+      const maskPath = entry.maskPath ?? config?.spotlightStyles?.maskPath;
       const dy = entry.scrollYAtCapture !== undefined ? entry.scrollYAtCapture - nowY : 0;
       const layout = { ...entry.layout, y: entry.layout.y + dy };
       const shape = computeShape(layout, entry.padding, entry.radius ?? undefined);
@@ -1285,7 +1288,10 @@ const TourGuideOverlay: React.FC = () => {
     target: renderLayout,
     padding: currentStepData.spotlightPadding,
     borderRadius: effectiveBorderRadius,
-    styles: config?.spotlightStyles,
+    // Per-step styles win over the config's, key by key.
+    styles: currentStepData.spotlightStyles
+      ? { ...config?.spotlightStyles, ...currentStepData.spotlightStyles }
+      : config?.spotlightStyles,
     screenWidth: screenDimensions.width,
     screenHeight: screenDimensions.height,
     animationDuration: config?.animationDuration,

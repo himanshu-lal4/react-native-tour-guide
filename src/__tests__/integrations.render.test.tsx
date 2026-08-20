@@ -425,6 +425,31 @@ describe('integrations', () => {
     });
   });
 
+  describe('per-step spotlightStyles', () => {
+    it('merges step styles over config styles for that step only', async () => {
+      await renderTour();
+      await start(
+        [
+          step({ id: 'a', title: 'First', targetRef: measurableRef() }),
+          step({
+            id: 'b',
+            title: 'Second',
+            targetRef: measurableRef(),
+            spotlightStyles: { overlayOpacity: 0.91 },
+          }),
+        ],
+        { spotlightStyles: { overlayOpacity: 0.33 }, motion: 'none' }
+      );
+      expect(JSON.stringify(screen.toJSON())).toContain('"fillOpacity":0.33');
+
+      await act(async () => api.nextStep());
+      await flush(600);
+      const json = JSON.stringify(screen.toJSON()) ?? '';
+      expect(json).toContain('"fillOpacity":0.91'); // step override wins
+      expect(json).not.toContain('"fillOpacity":0.33');
+    });
+  });
+
   describe('storage auto-detect', () => {
     it('falls back to memory storage with a warning when nothing is installed', async () => {
       const { detectStorage, __resetStorageCache } = require('../storage');
