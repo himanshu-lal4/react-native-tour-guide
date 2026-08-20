@@ -21,6 +21,13 @@ const mockTourGuide: TourGuideContextValue = {
   resumeTour: jest.fn(),
   setTargetLayout: jest.fn(),
   targetLayout: null,
+  setStepCompleted: jest.fn(),
+  defineTour: jest.fn(),
+  removeTour: jest.fn(),
+  canStartTour: jest.fn(),
+  registerTarget: jest.fn(),
+  unregisterTarget: jest.fn(),
+  getTarget: jest.fn(),
 };
 
 jest.mock('../TourGuideContext', () => ({
@@ -188,7 +195,7 @@ describe('useTourPersistence', () => {
       const started = await hook.startTour(makeSteps());
 
       expect(started).toBe(true);
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('requires config.tourId'));
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('without config.tourId'));
       expect(mockStartTour).toHaveBeenCalledTimes(1);
       warnSpy.mockRestore();
     });

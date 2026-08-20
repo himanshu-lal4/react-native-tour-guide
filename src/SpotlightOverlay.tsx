@@ -2,9 +2,9 @@ import React, { useRef, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View, Animated, Pressable, Dimensions } from 'react-native';
 import Svg, { Rect, Path, Defs, Mask } from 'react-native-svg';
 
-import type { SpotlightTarget, SpotlightStyles } from './types';
+import type { SpotlightMotion, SpotlightStyles, SpotlightTarget } from './types';
 import { computeShape } from './shapes';
-import type { SpotlightBorderRadius } from './shapes';
+import type { SpotlightBorderRadius, SpotlightPadding } from './shapes';
 
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
 
@@ -52,7 +52,8 @@ let maskIdCounter = 0;
 
 export interface SpotlightOverlayProps {
   target: SpotlightTarget | null;
-  padding?: number;
+  /** Uniform number or per-side padding around the spotlight */
+  padding?: SpotlightPadding;
   borderRadius?: SpotlightBorderRadius;
   styles?: SpotlightStyles;
   screenWidth: number;
@@ -60,6 +61,14 @@ export interface SpotlightOverlayProps {
   animationDuration?: number;
   onBackdropPress?: () => void;
   onSpotlightPress?: () => void;
+  /**
+   * Leave the spotlight hole touch-transparent so the real element underneath
+   * receives taps. Only meaningful when the overlay is NOT inside a Modal
+   * (inline overlay mode) — a Modal swallows touches regardless.
+   */
+  interactive?: boolean;
+  /** How the spotlight travels between steps (default: 'morph') */
+  motion?: SpotlightMotion;
 }
 
 /**
@@ -78,6 +87,8 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
   animationDuration = 300,
   onBackdropPress,
   onSpotlightPress,
+  interactive = false,
+  motion = 'morph',
 }) => {
   const {
     overlayOpacity = 0.6,
@@ -92,6 +103,7 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
     pulseDuration = 1500,
     pulseMinOpacity = 0.2,
     pulseMaxOpacity = 0.8,
+    maskPath,
   } = styles;
 
   // Unique mask IDs per instance to avoid SVG conflicts
@@ -109,20 +121,54 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
   const animRy = useRef(new Animated.Value(0)).current;
   const hasAnimated = useRef(false);
   const pulseOpacity = useRef(new Animated.Value(0)).current;
+  // Whole-overlay opacity used by the 'fade' motion preset.
+  const overlayFade = useRef(new Animated.Value(1)).current;
+  // Pulse visibility combined with the fade, so the pulse ring dips with the
+  // backdrop instead of floating alone during a fade transition.
+  const pulseVisible = useRef(Animated.multiply(pulseOpacity, overlayFade)).current;
+  // Guards nested animation callbacks against applying a stale shape after a
+  // newer step's effect has already run.
+  const shapeEpoch = useRef(0);
+  // Direct handles to the two SVG paths so per-frame updates go through
+  // setNativeProps instead of setState — a React re-render per animation frame
+  // is invisible on a flagship and very visible on a low-end Android.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const overlayPathRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pulsePathRef = useRef<any>(null);
 
   // Path data for per-corner border radius shapes
   const [pathD, setPathD] = useState('');
-  const usePathRendering = useMemo(() => {
-    if (!target) return false;
-    const result = computeShape(target, padding, customBorderRadius);
-    return result.kind === 'path';
-  }, [target, padding, customBorderRadius]);
 
-  // Compute shape result synchronously
-  const shapeResult = useMemo(
-    () => (target ? computeShape(target, padding, customBorderRadius) : null),
-    [target, padding, customBorderRadius]
-  );
+  // Compute shape result synchronously. A user-supplied maskPath overrides the
+  // automatic shape with an arbitrary SVG subpath (rendered as a static path;
+  // shape animation is skipped for custom paths).
+  const shapeResult = useMemo(() => {
+    if (!target) return null;
+    const auto = computeShape(target, padding, customBorderRadius);
+    if (maskPath) {
+      const autoBounds =
+        auto.kind === 'rect'
+          ? { x: auto.x, y: auto.y, width: auto.width, height: auto.height }
+          : auto.bounds;
+      try {
+        const d = maskPath({
+          target,
+          bounds: autoBounds,
+          screenWidth,
+          screenHeight,
+        });
+        if (typeof d === 'string' && d.length > 0) {
+          return { kind: 'path' as const, d, bounds: autoBounds };
+        }
+      } catch {
+        // A throwing maskPath falls back to the automatic shape.
+      }
+    }
+    return auto;
+  }, [target, padding, customBorderRadius, maskPath, screenWidth, screenHeight]);
+
+  const usePathRendering = shapeResult?.kind === 'path';
 
   // Bounding box for press overlay positioning
   const bounds = useMemo(() => {
@@ -137,6 +183,20 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
     }
     return shapeResult.bounds;
   }, [shapeResult]);
+
+  // Interactive mode: four press bands around the hole catch backdrop touches
+  // while the hole itself stays open so taps reach the real element. The
+  // rounded corners leave sub-corner-radius slivers touch-transparent —
+  // visually part of the backdrop, acceptable.
+  const pressBands = useMemo(() => {
+    if (!interactive || !bounds) return null;
+    return [
+      { left: 0, top: 0, right: 0, height: Math.max(0, bounds.y) }, // above
+      { left: 0, top: bounds.y + bounds.height, right: 0, bottom: 0 }, // below
+      { left: 0, top: bounds.y, width: Math.max(0, bounds.x), height: bounds.height }, // left
+      { left: bounds.x + bounds.width, top: bounds.y, right: 0, height: bounds.height }, // right
+    ];
+  }, [interactive, bounds]);
 
   // The dark overlay is drawn as a single even-odd path: a full-screen rectangle
   // with the spotlight punched out as a real hole. This replaces an SVG <Mask>,
@@ -173,16 +233,42 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
   // Per-corner (path) shapes set the path directly in the animation effect.
   useEffect(() => {
     if (usePathRendering) return undefined;
+    // Five listeners (x/y/w/h/rx) fire once each per animation frame; building
+    // the path string five times per frame is wasted work. Coalesce to one
+    // update per frame via requestAnimationFrame; values are read at flush
+    // time, so the last-written values always win.
+    let frameScheduled = false;
     const update = () => {
+      if (frameScheduled) return;
+      if (typeof requestAnimationFrame === 'function') {
+        frameScheduled = true;
+        requestAnimationFrame(() => {
+          frameScheduled = false;
+          flushUpdate();
+        });
+      } else {
+        flushUpdate();
+      }
+    };
+    const flushUpdate = () => {
       const v = animVals.current;
       const inner = roundedRectSubpath(v.x, v.y, v.w, v.h, v.rx);
-      setOverlayPathD(buildOverlayPath(inner));
-      // Keep the pulse border on the SAME state-driven path as the dark cutout.
-      // Previously the pulse used a native-animated <Rect> while the dark hole
-      // used this React-state path — the native rect outran the state update, so
-      // the highlight appeared to "move" while the cutout was left behind. Both
-      // now read from the same setState, so they can never drift apart.
-      setPathD(inner);
+      // Fast path: write the path data straight to the native SVG nodes. Both
+      // the dark hole and the pulse ring are driven from the SAME string here,
+      // so they can never drift apart. Falls back to setState when
+      // setNativeProps is unavailable (tests, exotic hosts); the final frame is
+      // always committed to state when the animation ends.
+      const overlayNode = overlayPathRef.current;
+      if (overlayNode && typeof overlayNode.setNativeProps === 'function') {
+        overlayNode.setNativeProps({ d: buildOverlayPath(inner) });
+        const pulseNode = pulsePathRef.current;
+        if (pulseNode && typeof pulseNode.setNativeProps === 'function') {
+          pulseNode.setNativeProps({ d: inner });
+        }
+      } else {
+        setOverlayPathD(buildOverlayPath(inner));
+        setPathD(inner);
+      }
     };
     const ix = animX.addListener(({ value }) => {
       animVals.current.x = value;
@@ -217,9 +303,36 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
   // Animation effect
   useEffect(() => {
     if (!shapeResult) return;
+    const epoch = ++shapeEpoch.current;
+
+    // Snap every animated value + both state paths to a rect result at once.
+    const applyRectImmediate = (r: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      rx: number;
+      ry: number;
+    }) => {
+      animX.setValue(r.x);
+      animY.setValue(r.y);
+      animWidth.setValue(r.width);
+      animHeight.setValue(r.height);
+      animRx.setValue(r.rx);
+      animRy.setValue(r.ry);
+      animVals.current = { x: r.x, y: r.y, w: r.width, h: r.height, rx: r.rx };
+      const inner = roundedRectSubpath(r.x, r.y, r.width, r.height, r.rx);
+      setOverlayPathD(buildOverlayPath(inner));
+      // Same source as the dark hole — keeps the pulse border in lockstep.
+      setPathD(inner);
+    };
 
     if (shapeResult.kind === 'path') {
-      // Path shapes (per-corner radius): set bounding box values immediately
+      // Path shapes (per-corner radius / custom maskPath): applied immediately —
+      // arbitrary paths can't be tweened reliably, so they jump. Restore the
+      // fade opacity in case an interrupted 'fade' left it near 0.
+      overlayFade.stopAnimation();
+      overlayFade.setValue(1);
       const b = shapeResult.bounds;
       animX.setValue(b.x);
       animY.setValue(b.y);
@@ -231,70 +344,85 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
       return;
     }
 
-    // Rect shapes
-    if (!hasAnimated.current) {
-      // First target — set immediately, no animation
-      animX.setValue(shapeResult.x);
-      animY.setValue(shapeResult.y);
-      animWidth.setValue(shapeResult.width);
-      animHeight.setValue(shapeResult.height);
-      animRx.setValue(shapeResult.rx);
-      animRy.setValue(shapeResult.ry);
-      animVals.current = {
-        x: shapeResult.x,
-        y: shapeResult.y,
-        w: shapeResult.width,
-        h: shapeResult.height,
-        rx: shapeResult.rx,
-      };
-      const inner = roundedRectSubpath(
-        shapeResult.x,
-        shapeResult.y,
-        shapeResult.width,
-        shapeResult.height,
-        shapeResult.rx
-      );
-      setOverlayPathD(buildOverlayPath(inner));
-      // Same source as the dark hole — keeps the pulse border in lockstep.
-      setPathD(inner);
+    // Rect shapes: first target always snaps into place (nothing to move from).
+    if (!hasAnimated.current || motion === 'none') {
+      overlayFade.stopAnimation();
+      overlayFade.setValue(1);
+      applyRectImmediate(shapeResult);
       hasAnimated.current = true;
       return;
     }
 
-    // Animate to new position
+    // 'fade': dip the whole overlay out, jump the hole, fade back in.
+    // Halves scale with animationDuration (default 300ms ≈ the old 140/180).
+    if (motion === 'fade') {
+      Animated.timing(overlayFade, {
+        toValue: 0,
+        duration: Math.max(60, animationDuration * 0.45),
+        useNativeDriver: true,
+      }).start(() => {
+        // A newer step took over mid-dip: it either runs its own fade from the
+        // current opacity, or its branch restores opacity itself — never leave
+        // the overlay stuck invisible.
+        if (epoch !== shapeEpoch.current) return;
+        applyRectImmediate(shapeResult);
+        Animated.timing(overlayFade, {
+          toValue: 1,
+          duration: Math.max(80, animationDuration * 0.55),
+          useNativeDriver: true,
+        }).start();
+      });
+      return;
+    }
+
+    // 'morph' / 'bounce' below never touch overlayFade during the move, so make
+    // sure an interrupted fade can't leave the backdrop invisible.
+    overlayFade.stopAnimation();
+    overlayFade.setValue(1);
+
+    // 'morph' (timing) / 'bounce' (spring): animate position, size and radius.
+    const animate =
+      motion === 'bounce'
+        ? (value: Animated.Value, toValue: number) =>
+            Animated.spring(value, {
+              toValue,
+              friction: 7,
+              tension: 90,
+              useNativeDriver: false,
+            })
+        : (value: Animated.Value, toValue: number) =>
+            Animated.timing(value, {
+              toValue,
+              duration: animationDuration,
+              useNativeDriver: false,
+            });
+
     Animated.parallel([
-      Animated.timing(animX, {
-        toValue: shapeResult.x,
-        duration: animationDuration,
-        useNativeDriver: false,
-      }),
-      Animated.timing(animY, {
-        toValue: shapeResult.y,
-        duration: animationDuration,
-        useNativeDriver: false,
-      }),
-      Animated.timing(animWidth, {
-        toValue: shapeResult.width,
-        duration: animationDuration,
-        useNativeDriver: false,
-      }),
-      Animated.timing(animHeight, {
-        toValue: shapeResult.height,
-        duration: animationDuration,
-        useNativeDriver: false,
-      }),
-      Animated.timing(animRx, {
-        toValue: shapeResult.rx,
-        duration: animationDuration,
-        useNativeDriver: false,
-      }),
-      Animated.timing(animRy, {
-        toValue: shapeResult.ry,
-        duration: animationDuration,
-        useNativeDriver: false,
-      }),
-    ]).start();
-  }, [shapeResult, animX, animY, animWidth, animHeight, animRx, animRy, animationDuration]);
+      animate(animX, shapeResult.x),
+      animate(animY, shapeResult.y),
+      animate(animWidth, shapeResult.width),
+      animate(animHeight, shapeResult.height),
+      animate(animRx, shapeResult.rx),
+      animate(animRy, shapeResult.ry),
+    ]).start(({ finished }) => {
+      // Commit the final frame to React state so a later unrelated re-render
+      // can't paint a stale path from before the setNativeProps fast path.
+      if (finished && epoch === shapeEpoch.current) {
+        applyRectImmediate(shapeResult);
+      }
+    });
+  }, [
+    shapeResult,
+    motion,
+    animX,
+    animY,
+    animWidth,
+    animHeight,
+    animRx,
+    animRy,
+    animationDuration,
+    overlayFade,
+  ]);
 
   // Pulse animation
   useEffect(() => {
@@ -365,62 +493,122 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
   const renderCutout = (fill: string, stroke?: string, sw?: number) =>
     usePathRendering ? renderPathCutout(fill, stroke, sw) : renderRectCutout(fill, stroke, sw);
 
+  // Optional masked blur/gradient backdrop — shared by both render branches so
+  // interactive steps keep the same backdrop styling as everything else.
+  const renderBlurLayer = () =>
+    enableBlur && BlurView && MaskedView ? (
+      <MaskedView
+        style={StyleSheet.absoluteFill}
+        maskElement={
+          <Svg height={coverHeight} width={coverWidth}>
+            <Defs>
+              <Mask id={maskIds.inverse}>
+                <Rect x="0" y="0" width={coverWidth} height={coverHeight} fill="white" />
+                {renderCutout('black')}
+              </Mask>
+            </Defs>
+            <Rect
+              x="0"
+              y="0"
+              width={coverWidth}
+              height={coverHeight}
+              fill="black"
+              mask={`url(#${maskIds.inverse})`}
+            />
+          </Svg>
+        }
+      >
+        <BlurView
+          style={StyleSheet.absoluteFill}
+          blurType="light"
+          blurAmount={blurAmount}
+          reducedTransparencyFallbackColor="white"
+        />
+        {enableGradient && LinearGradient ? (
+          <LinearGradient
+            colors={gradientColors}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        ) : null}
+      </MaskedView>
+    ) : null;
+
+  if (pressBands) {
+    return (
+      <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+        {/* The dark backdrop never intercepts touches in interactive mode */}
+        <Animated.View
+          style={[StyleSheet.absoluteFill, { opacity: overlayFade }]}
+          pointerEvents="none"
+        >
+          {renderBlurLayer()}
+          <Svg height={coverHeight} width={coverWidth} style={StyleSheet.absoluteFill}>
+            <Path
+              ref={overlayPathRef}
+              d={overlayPathD}
+              fill={overlayColor}
+              fillOpacity={overlayOpacity}
+              fillRule="evenodd"
+            />
+          </Svg>
+          {enablePulse ? (
+            <Animated.View
+              style={[StyleSheet.absoluteFill, { opacity: pulseVisible }]}
+              pointerEvents="none"
+            >
+              <Svg height={coverHeight} width={coverWidth}>
+                <Path
+                  ref={pulsePathRef}
+                  d={pathD}
+                  fill="none"
+                  stroke={pulseColor}
+                  strokeWidth={pulseWidth}
+                />
+              </Svg>
+            </Animated.View>
+          ) : null}
+        </Animated.View>
+        {/* Backdrop touches are caught by the bands; the hole is left open */}
+        {pressBands.map((band, i) => (
+          <Pressable
+            key={`band-${i}`}
+            style={[{ position: 'absolute' }, band]}
+            onPress={onBackdropPress}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          />
+        ))}
+      </View>
+    );
+  }
+
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       {/* Backdrop press layer — behind everything */}
       <Pressable style={StyleSheet.absoluteFill} onPress={onBackdropPress}>
         {/* Optional: Masked blur effect */}
-        {enableBlur && BlurView && MaskedView ? (
-          <MaskedView
-            style={StyleSheet.absoluteFill}
-            maskElement={
-              <Svg height={coverHeight} width={coverWidth}>
-                <Defs>
-                  <Mask id={maskIds.inverse}>
-                    <Rect x="0" y="0" width={coverWidth} height={coverHeight} fill="white" />
-                    {renderCutout('black')}
-                  </Mask>
-                </Defs>
-                <Rect
-                  x="0"
-                  y="0"
-                  width={coverWidth}
-                  height={coverHeight}
-                  fill="black"
-                  mask={`url(#${maskIds.inverse})`}
-                />
-              </Svg>
-            }
-          >
-            <BlurView
-              style={StyleSheet.absoluteFill}
-              blurType="light"
-              blurAmount={blurAmount}
-              reducedTransparencyFallbackColor="white"
-            />
-            {enableGradient && LinearGradient ? (
-              <LinearGradient
-                colors={gradientColors}
-                start={{ x: 0.5, y: 0 }}
-                end={{ x: 0.5, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-            ) : null}
-          </MaskedView>
-        ) : null}
+        {renderBlurLayer()}
 
         {/* Main dark overlay: full screen with the spotlight punched out as a
             true hole via an even-odd path (Fabric-safe; no <Mask>). Sized to the
             physical screen so it covers the whole Modal (incl. the Android
             nav-bar area), not just the window. */}
-        <Svg height={coverHeight} width={coverWidth} style={StyleSheet.absoluteFill}>
-          <Path
-            d={overlayPathD}
-            fill={overlayColor}
-            fillOpacity={overlayOpacity}
-            fillRule="evenodd"
-          />
-        </Svg>
+        <Animated.View
+          style={[StyleSheet.absoluteFill, { opacity: overlayFade }]}
+          pointerEvents="none"
+        >
+          <Svg height={coverHeight} width={coverWidth} style={StyleSheet.absoluteFill}>
+            <Path
+              ref={overlayPathRef}
+              d={overlayPathD}
+              fill={overlayColor}
+              fillOpacity={overlayOpacity}
+              fillRule="evenodd"
+            />
+          </Svg>
+        </Animated.View>
       </Pressable>
 
       {/* Pulse border overlay — driven by the SAME `pathD` state as the dark
@@ -428,11 +616,17 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
           transparent hole always animate as one and never drift apart. */}
       {enablePulse ? (
         <Animated.View
-          style={[StyleSheet.absoluteFill, { opacity: pulseOpacity }]}
+          style={[StyleSheet.absoluteFill, { opacity: pulseVisible }]}
           pointerEvents="none"
         >
           <Svg height={coverHeight} width={coverWidth}>
-            <Path d={pathD} fill="none" stroke={pulseColor} strokeWidth={pulseWidth} />
+            <Path
+              ref={pulsePathRef}
+              d={pathD}
+              fill="none"
+              stroke={pulseColor}
+              strokeWidth={pulseWidth}
+            />
           </Svg>
         </Animated.View>
       ) : null}

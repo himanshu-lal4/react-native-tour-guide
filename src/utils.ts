@@ -2,6 +2,7 @@ import { StyleSheet, Platform, StatusBar } from 'react-native';
 import type { ViewStyle } from 'react-native';
 
 import type { EdgeInsets, MeasurableRef, SpotlightTarget } from './types';
+import { warnOnce } from './dev';
 import type { SpotlightBorderRadius } from './shapes';
 
 const ZERO_INSETS: EdgeInsets = { top: 0, bottom: 0, left: 0, right: 0 };
@@ -52,7 +53,7 @@ const getAutoInsets = (): EdgeInsets => {
     try {
       // initialWindowMetrics is a synchronous snapshot — no hook required, so
       // this works from plain functions and is set once at app launch.
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
+
       const mod = require('react-native-safe-area-context');
       const metricsInsets = mod?.initialWindowMetrics?.insets;
       _autoInsets = metricsInsets
@@ -80,9 +81,7 @@ const getAutoInsets = (): EdgeInsets => {
  * system chrome like the status bar, and is what corrects `measureInWindow`
  * coordinates on Android (see TourGuideOverlay).
  */
-export const resolveSafeAreaInsets = (config?: {
-  insets?: Partial<EdgeInsets>;
-}): EdgeInsets => {
+export const resolveSafeAreaInsets = (config?: { insets?: Partial<EdgeInsets> }): EdgeInsets => {
   const auto = getAutoInsets();
   return {
     top: config?.insets?.top ?? auto.top,
@@ -125,8 +124,9 @@ export const validateRef = (ref: MeasurableRef | undefined, stepId: string): boo
   // A ref was provided but points to nothing — this usually IS a mistake
   // (component not mounted yet / wrong ref), so it's worth a dev warning.
   if (!ref.current) {
-    console.warn(
-      `react-native-tour-guide: Step "${stepId}" targetRef.current is null. The component may not be mounted; showing a centered tooltip instead.`
+    warnOnce(
+      `Step "${stepId}" has a targetRef whose .current is null, so there is nothing to highlight. Showing a centered tooltip instead.`,
+      'Attach the ref to a rendered host component (e.g. <View ref={ref}>) and make sure it is mounted before startTour() runs.'
     );
     return false;
   }
@@ -202,4 +202,130 @@ export const extractBorderRadius = (
   }
 
   return { topLeft: tl, topRight: tr, bottomRight: br, bottomLeft: bl };
+};
+
+/**
+ * Scroll a scrollable ref to an absolute Y offset.
+ *
+ * Consumers pass all kinds of scrollables, and each exposes a different imperative
+ * API — assuming `scrollTo` crashes with `scrollTo is not a function` on the most
+ * common one (`FlatList`). This normalises across:
+ *
+ *  - `ScrollView` (and gesture-handler / Animated wrappers) → `scrollTo`
+ *  - `FlatList` / `VirtualizedList`                         → `scrollToOffset`
+ *  - `SectionList` and other list wrappers                  → `getScrollResponder()` / `getScrollRef()`
+ *  - legacy `Animated.ScrollView`                           → `getNode()`
+ *  - `KeyboardAwareScrollView`                              → `scrollToPosition`
+ *
+ * @returns true if a scroll was actually issued, false if the ref exposes no
+ * usable scroll method (the caller should then continue without scrolling
+ * rather than leaving the tour stuck).
+ */
+export const scrollRefToY = (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  scrollRef: { current: any } | null | undefined,
+  y: number,
+  animated: boolean
+): boolean => {
+  const node = scrollRef?.current;
+  if (!node) return false;
+
+  const targetY = Math.max(0, y);
+
+  // Unwrap legacy Animated.ScrollView / list wrappers that hide the real
+  // scrollable behind a getter.
+  const candidates = [node];
+  for (const getter of ['getNode', 'getScrollResponder', 'getScrollRef'] as const) {
+    try {
+      if (typeof node[getter] === 'function') {
+        const inner = node[getter]();
+        if (inner) candidates.push(inner);
+      }
+    } catch {
+      // A getter that throws (unmounted inner list) is not usable — skip it.
+    }
+  }
+
+  for (const c of candidates) {
+    try {
+      if (typeof c.scrollTo === 'function') {
+        c.scrollTo({ x: 0, y: targetY, animated });
+        return true;
+      }
+      if (typeof c.scrollToOffset === 'function') {
+        c.scrollToOffset({ offset: targetY, animated });
+        return true;
+      }
+      if (typeof c.scrollToPosition === 'function') {
+        c.scrollToPosition(0, targetY, animated);
+        return true;
+      }
+    } catch {
+      // Try the next candidate rather than taking the whole tour down.
+    }
+  }
+
+  return false;
+};
+
+// ─── Color parsing for readable-by-default tooltips ──────────────────────────
+
+const NAMED_COLORS: Record<string, string> = {
+  white: '#ffffff',
+  black: '#000000',
+  gray: '#808080',
+  grey: '#808080',
+  red: '#ff0000',
+  blue: '#0000ff',
+  green: '#008000',
+  yellow: '#ffff00',
+  orange: '#ffa500',
+  purple: '#800080',
+  transparent: '#00000000',
+};
+
+/**
+ * Whether a background color is light (true), dark (false), or unparseable
+ * (null). Supports #rgb/#rgba/#rrggbb/#rrggbbaa, rgb()/rgba(), and a handful of
+ * common named colors — enough for the tooltip-background use case; anything
+ * exotic returns null and callers keep their existing defaults.
+ *
+ * Used to pick readable default text colors when a consumer sets a custom
+ * tooltip background: a pale background used to get the built-in white title
+ * text, which is invisible.
+ */
+export const isLightColor = (color: string): boolean | null => {
+  if (typeof color !== 'string') return null;
+  let c = color.trim().toLowerCase();
+  c = NAMED_COLORS[c] ?? c;
+
+  let r: number, g: number, b: number;
+
+  const rgbMatch = c.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/);
+  if (rgbMatch) {
+    r = parseFloat(rgbMatch[1] as string);
+    g = parseFloat(rgbMatch[2] as string);
+    b = parseFloat(rgbMatch[3] as string);
+  } else if (/^#[0-9a-f]{3,8}$/.test(c)) {
+    const hex = c.slice(1);
+    if (hex.length === 3 || hex.length === 4) {
+      r = parseInt((hex[0] as string) + hex[0], 16);
+      g = parseInt((hex[1] as string) + hex[1], 16);
+      b = parseInt((hex[2] as string) + hex[2], 16);
+    } else if (hex.length === 6 || hex.length === 8) {
+      r = parseInt(hex.slice(0, 2), 16);
+      g = parseInt(hex.slice(2, 4), 16);
+      b = parseInt(hex.slice(4, 6), 16);
+    } else {
+      return null;
+    }
+  } else {
+    return null;
+  }
+
+  if ([r, g, b].some((v) => Number.isNaN(v) || v < 0 || v > 255)) return null;
+
+  // Perceived brightness (ITU-R BT.601), same scale tinycolor uses: 0-255.
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  return brightness > 180;
 };

@@ -130,7 +130,7 @@ describe('validateRef', () => {
     const result = validateRef(ref, 'step2');
     expect(result).toBe(false);
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Step "step2" targetRef.current is null')
+      expect.stringContaining('Step "step2" has a targetRef whose .current is null')
     );
   });
 
