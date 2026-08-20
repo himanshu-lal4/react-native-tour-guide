@@ -5,9 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0] - 2026-08-21
 
 Stability, compatibility and diagnostics pass, plus the declarative / headless / interactive API expansion. No breaking changes to the JS API — but note one **install-time breaking change**: peer dependency ranges were narrowed from `react: *` / `react-native: *` to `react >=18` / `react-native >=0.71` (the code has required these all along — e.g. `gap` styles — so the old ranges were dishonest, not permissive). Apps on older React/RN will now get an install error instead of a runtime break. **Ship this as a major version bump.**
+
+### Added — since the first cut of this release
+
+- **`spotlightStyles.blurTarget`** — real backdrop blur on Android with expo-blur: wrap your screen content in a `BlurTargetView` and pass its ref; without it Android falls back to a soft tint (iOS blurs out of the box either way).
+- **Per-step `spotlightStyles`** — override the overlay color, opacity, blur, pulse, mask and more for a single step; merged over the config-level styles.
+
+### Fixed — since the first cut of this release
+
+- **Android inline-overlay misalignment** — `overlayMode: 'inline'` assumed the overlay shared the window's coordinate space; on devices where it doesn't (status-bar/edge-to-edge/OEM differences) every spotlight was offset. The overlay now measures its own window origin and corrects empirically, so it is pixel-perfect regardless of status bar height or navigation-button mode.
+- **`keepSpotlight` holes froze in place while scrolling** — kept holes are now stored as shape data and translated by the tracked scroll delta, so they stay glued to their targets.
+- **Blur ↔ no-blur step changes hitched** — when any step in the tour enables blur, the (expensive) blur subtree now stays mounted for the whole tour and cross-fades (220ms) instead of mounting and unmounting at step boundaries.
 
 ### Added — tracking, analytics & platform integrations
 
@@ -178,6 +189,7 @@ First stable release — a production-ready tour-guide toolkit for React Native 
 
 ---
 
+[2.0.0]: https://github.com/himanshu-lal4/react-native-tour-guide/releases/tag/v2.0.0
 [1.0.1]: https://github.com/himanshu-lal4/react-native-tour-guide/releases/tag/v1.0.1
 [1.0.0]: https://github.com/himanshu-lal4/react-native-tour-guide/releases/tag/v1.0.0
 [0.1.0]: https://github.com/himanshu-lal4/react-native-tour-guide/releases/tag/v0.1.0
