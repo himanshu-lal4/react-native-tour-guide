@@ -1,7 +1,7 @@
 {
   "name": "@wrack/react-native-tour-guide",
-  "version": "1.0.1",
-  "description": "React Native tour guide, walkthrough, and coach marks library. Auto shape-matching spotlight, smart auto-scroll, themeable tooltips, pulse animation, and a declarative API. Works with Expo and React Native CLI — zero native dependencies, TypeScript, New Architecture ready.",
+  "version": "2.0.0",
+  "description": "React Native tour guide, walkthrough, and coach marks library. Auto shape-matching spotlight, smart auto-scroll, themeable tooltips, pulse animation, and a declarative API. Works with Expo and React Native CLI \u2014 zero native dependencies, TypeScript, New Architecture ready.",
   "main": "./lib/commonjs/index.js",
   "module": "./lib/module/index.js",
   "types": "./lib/typescript/commonjs/src/index.d.ts",
