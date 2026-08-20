@@ -11,19 +11,35 @@ const AnimatedRect = Animated.createAnimatedComponent(Rect);
 const DEFAULT_SPOTLIGHT_STYLES: SpotlightStyles = {};
 
 // Resolve optional dependencies once at module scope
-let _resolvedBlurView: React.ComponentType<Record<string, unknown>> | null | undefined;
+interface BlurProvider {
+  Component: React.ComponentType<Record<string, unknown>>;
+  /** community: @react-native-community/blur; expo: expo-blur (works in Expo Go) */
+  kind: 'community' | 'expo';
+}
+let _resolvedBlur: BlurProvider | null | undefined;
 let _resolvedLinearGradient: React.ComponentType<Record<string, unknown>> | null | undefined;
 let _resolvedMaskedView: React.ComponentType<Record<string, unknown>> | null | undefined;
 
-const getBlurView = () => {
-  if (_resolvedBlurView === undefined) {
+const getBlurProvider = (): BlurProvider | null => {
+  if (_resolvedBlur === undefined) {
+    _resolvedBlur = null;
     try {
-      _resolvedBlurView = require('@react-native-community/blur').BlurView;
+      const community = require('@react-native-community/blur').BlurView;
+      if (community) _resolvedBlur = { Component: community, kind: 'community' };
     } catch {
-      _resolvedBlurView = null;
+      // fall through to expo-blur
+    }
+    if (!_resolvedBlur) {
+      try {
+        // expo-blur ships inside Expo Go, so blur works there without a dev build.
+        const expo = require('expo-blur').BlurView;
+        if (expo) _resolvedBlur = { Component: expo, kind: 'expo' };
+      } catch {
+        _resolvedBlur = null;
+      }
     }
   }
-  return _resolvedBlurView;
+  return _resolvedBlur;
 };
 
 const getLinearGradient = () => {
@@ -507,9 +523,9 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
   }
 
   // Resolve optional libraries (cached at module scope)
-  const BlurView = enableBlur ? getBlurView() : null;
+  const blurProvider = enableBlur ? getBlurProvider() : null;
   const LinearGradient = enableGradient ? getLinearGradient() : null;
-  const MaskedView = enableBlur && BlurView ? getMaskedView() : null;
+  const MaskedView = enableBlur && blurProvider ? getMaskedView() : null;
 
   // --- Cutout shape rendering helpers ---
   const renderRectCutout = (fill: string, stroke?: string, sw?: number) => (
@@ -536,7 +552,7 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
   // Optional masked blur/gradient backdrop — shared by both render branches so
   // interactive steps keep the same backdrop styling as everything else.
   const renderBlurLayer = () =>
-    enableBlur && BlurView && MaskedView ? (
+    enableBlur && blurProvider && MaskedView ? (
       <MaskedView
         style={StyleSheet.absoluteFill}
         maskElement={
@@ -558,12 +574,23 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
           </Svg>
         }
       >
-        <BlurView
-          style={StyleSheet.absoluteFill}
-          blurType="light"
-          blurAmount={blurAmount}
-          reducedTransparencyFallbackColor="white"
-        />
+        {blurProvider.kind === 'community' ? (
+          <blurProvider.Component
+            style={StyleSheet.absoluteFill}
+            blurType="light"
+            blurAmount={blurAmount}
+            reducedTransparencyFallbackColor="white"
+          />
+        ) : (
+          // expo-blur: real blur on iOS; on Android it degrades to a soft tint
+          // (its real-blur mode needs a blurTarget ref the library can't know).
+          // For true Android blur use @react-native-community/blur in a dev build.
+          <blurProvider.Component
+            style={StyleSheet.absoluteFill}
+            intensity={Math.min(100, blurAmount * 2)}
+            tint="light"
+          />
+        )}
         {enableGradient && LinearGradient ? (
           <LinearGradient
             colors={gradientColors}

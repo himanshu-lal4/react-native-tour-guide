@@ -10,8 +10,10 @@
   },
   "dependencies": {
     "@expo/metro-runtime": "~56.0.15",
+    "@react-native-masked-view/masked-view": "0.3.2",
     "@wrack/react-native-tour-guide": "workspace:*",
     "expo": "^56.0.0",
+    "expo-blur": "~56.0.4",
     "expo-status-bar": "~56.0.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",

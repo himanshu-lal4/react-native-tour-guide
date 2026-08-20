@@ -130,9 +130,23 @@ const mini = StyleSheet.create({
 });
 
 // A rounded speech bubble — bright, friendly, nothing like the built-in.
-function BubbleTooltip({ title, description, position, targetHeight, onNext }: TooltipProps) {
+function BubbleTooltip({
+  title,
+  description,
+  position,
+  targetWidth,
+  targetHeight,
+  screenWidth,
+  onNext,
+}: TooltipProps) {
   const below = position.y < 420;
   const top = below ? position.y + (targetHeight ?? 0) + 16 : position.y - 118;
+  // The tail points at the TARGET's horizontal center (clamped inside the
+  // card) — a fixed tail position points at nothing when the target sits on
+  // the other side of the screen.
+  const wrapWidth = (screenWidth ?? 360) - 48; // wrap has left/right 24
+  const targetCenterX = position.x + (targetWidth ?? 0) / 2;
+  const tailLeft = Math.min(Math.max(targetCenterX - 24 - 8, 18), wrapWidth - 34);
   return (
     <Pressable onPress={onNext} style={[bubble.wrap, { top }]}>
       <View style={bubble.card}>
@@ -140,7 +154,7 @@ function BubbleTooltip({ title, description, position, targetHeight, onNext }: T
         <Text style={bubble.text}>{description}</Text>
         <Text style={bubble.hint}>tap to continue →</Text>
       </View>
-      <View style={[bubble.tail, below ? bubble.tailUp : bubble.tailDown]} />
+      <View style={[bubble.tail, { left: tailLeft }, below ? bubble.tailUp : bubble.tailDown]} />
     </Pressable>
   );
 }
@@ -158,7 +172,6 @@ const bubble = StyleSheet.create({
   hint: { fontSize: 11, fontWeight: '700', color: '#78350F', marginTop: 8 },
   tail: {
     position: 'absolute',
-    left: 34,
     width: 16,
     height: 16,
     backgroundColor: '#F59E0B',
@@ -241,6 +254,47 @@ const hexagonMask = ({
   return `M${pts.join(' L')} Z`;
 };
 
+type MaskArgs = { bounds: { x: number; y: number; width: number; height: number } };
+
+const triangleMask = ({ bounds }: MaskArgs): string => {
+  const { x, y, width: w, height: h } = bounds;
+  const p = 8; // breathe a little around the tile
+  return `M${x + w / 2},${y - p} L${x + w + p},${y + h + p} L${x - p},${y + h + p} Z`;
+};
+
+const starMask = ({ bounds }: MaskArgs): string => {
+  const cx = bounds.x + bounds.width / 2;
+  const cy = bounds.y + bounds.height / 2;
+  const outer = Math.max(bounds.width, bounds.height) / 2 + 10;
+  const inner = outer * 0.45;
+  const pts = Array.from({ length: 10 }, (_, i) => {
+    const r = i % 2 === 0 ? outer : inner;
+    const a = -Math.PI / 2 + (i / 10) * Math.PI * 2;
+    return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`;
+  });
+  return `M${pts.join(' L')} Z`;
+};
+
+const heartMask = ({ bounds }: MaskArgs): string => {
+  // Two cubic lobes meeting at a cleft, scaled to the tile's bounding square.
+  const size = Math.max(bounds.width, bounds.height) + 18;
+  const x = bounds.x + bounds.width / 2 - size / 2;
+  const y = bounds.y + bounds.height / 2 - size / 2;
+  const u = size / 100; // author in a 100x100 box, scale to fit
+  const X = (v: number) => x + v * u;
+  const Y = (v: number) => y + v * u;
+  return [
+    `M${X(50)},${Y(26)}`,
+    `C${X(42)},${Y(12)} ${X(24)},${Y(8)} ${X(13.5)},${Y(18)}`,
+    `C${X(3)},${Y(28)} ${X(3.5)},${Y(45)} ${X(13)},${Y(56.5)}`,
+    `C${X(22)},${Y(67.5)} ${X(38)},${Y(80)} ${X(50)},${Y(92)}`,
+    `C${X(62)},${Y(80)} ${X(78)},${Y(67.5)} ${X(87)},${Y(56.5)}`,
+    `C${X(96.5)},${Y(45)} ${X(97)},${Y(28)} ${X(86.5)},${Y(18)}`,
+    `C${X(76)},${Y(8)} ${X(58)},${Y(12)} ${X(50)},${Y(26)}`,
+    'Z',
+  ].join(' ');
+};
+
 const TABS = ['Home', 'Explore', 'Alerts', 'Profile'];
 const LIST = Array.from({ length: 10 }, (_, i) => `List item ${i + 1}`);
 
@@ -257,7 +311,10 @@ function Demo() {
   const { scrollProps } = useTourScroll();
 
   const tapRef = useRef(null);
+  const triRef = useRef(null);
   const hexRef = useRef(null);
+  const starRef = useRef(null);
+  const heartRef = useRef(null);
   const ticketRef = useRef(null);
   const gridRef = useRef(null);
   const lastRowRef = useRef(null);
@@ -284,7 +341,9 @@ function Demo() {
       targetId: 'hero',
       title: 'The built-in tooltip',
       description:
-        'Steps without a custom renderer get this themeable tooltip — dots, buttons, the lot.',
+        'Themeable dots and buttons out of the box — over a LIVE-BLURRED backdrop (optional blur, works in Expo Go).',
+      // Per-step blurred backdrop: expo-blur is auto-detected.
+      spotlightStyles: { enableBlur: true, blurAmount: 22, overlayOpacity: 0.45 },
       autoAdvance: auto,
     },
     {
@@ -315,18 +374,46 @@ function Demo() {
       spotlightStyles: { overlayColor: '#2E1065', overlayOpacity: 0.85 },
       autoAdvance: auto,
     },
+    // ── Shape montage: four quick beats, each an arbitrary maskPath cutout ──
     {
-      id: 'hex',
-      targetRef: hexRef,
+      id: 'shape-tri',
+      targetRef: triRef,
       title: 'maskPath: any silhouette',
-      description: 'This hexagon cutout is a custom SVG path — draw any spotlight you like.',
+      description: 'A triangle spotlight — the cutout is just an SVG path you write.',
       renderTooltip: (props) => <ConsoleTooltip {...props} />,
-      spotlightStyles: {
-        maskPath: hexagonMask,
-        enablePulse: true,
-        pulseColor: '#F59E0B', // amber pulse, just here
-      },
-      autoAdvance: auto,
+      spotlightStyles: { maskPath: triangleMask, enablePulse: true, pulseColor: '#F59E0B' },
+      motion: 'none',
+      autoAdvance: auto ? 1500 : undefined,
+    },
+    {
+      id: 'shape-hex',
+      targetRef: hexRef,
+      title: '…a hexagon',
+      description: 'Same step config, different path.',
+      renderTooltip: (props) => <ConsoleTooltip {...props} />,
+      spotlightStyles: { maskPath: hexagonMask, enablePulse: true, pulseColor: '#F59E0B' },
+      motion: 'none',
+      autoAdvance: auto ? 1300 : undefined,
+    },
+    {
+      id: 'shape-star',
+      targetRef: starRef,
+      title: '…a star',
+      description: 'Ten points, one path string.',
+      renderTooltip: (props) => <ConsoleTooltip {...props} />,
+      spotlightStyles: { maskPath: starMask, enablePulse: true, pulseColor: '#F59E0B' },
+      motion: 'none',
+      autoAdvance: auto ? 1300 : undefined,
+    },
+    {
+      id: 'shape-heart',
+      targetRef: heartRef,
+      title: '…or a heart',
+      description: 'People ask for this one. Two béziers.',
+      renderTooltip: (props) => <ConsoleTooltip {...props} />,
+      spotlightStyles: { maskPath: heartMask, enablePulse: true, pulseColor: '#F43F5E' },
+      motion: 'none',
+      autoAdvance: auto ? 1500 : undefined,
     },
     {
       id: 'grid',
@@ -428,7 +515,7 @@ function Demo() {
               <Text style={s.heroTitle}>Every step highlights one feature</Text>
               <View style={s.heroRow}>
                 <View style={s.heroPill}>
-                  <Text style={s.heroPillText}>8 steps</Text>
+                  <Text style={s.heroPillText}>11 steps</Text>
                 </View>
                 <Text style={s.heroHint}>sit back — it plays itself</Text>
               </View>
@@ -468,13 +555,15 @@ function Demo() {
           <View ref={gridRef} collapsable={false} style={s.grid}>
             <Text style={s.gridTitle}>Works over any layout</Text>
             <View style={s.gridRow}>
-              {['●', '⬢', '★', '◱'].map((g, i) => (
-                <View
-                  key={g}
-                  ref={i === 1 ? hexRef : undefined}
-                  collapsable={false}
-                  style={s.gridCell}
-                >
+              {(
+                [
+                  ['▲', triRef],
+                  ['⬢', hexRef],
+                  ['★', starRef],
+                  ['♥', heartRef],
+                ] as const
+              ).map(([g, r]) => (
+                <View key={g} ref={r} collapsable={false} style={s.gridCell}>
                   <Text style={s.gridGlyph}>{g}</Text>
                 </View>
               ))}
@@ -634,17 +723,19 @@ const s = StyleSheet.create({
   gridGlyph: { fontSize: 20, color: C.brandDeep },
 
   sectionTitle: { fontSize: 15, fontWeight: '700', color: C.ink, marginTop: 26, marginBottom: 10 },
-  panel: { backgroundColor: C.surface, borderRadius: 20, paddingHorizontal: 16 },
+  panel: { gap: 10 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: C.hairline,
+    paddingHorizontal: 16,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: '#DDE1EC',
     borderRadius: 14,
   },
-  rowLast: { borderBottomWidth: 0 },
+  rowLast: {},
   rowDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#DDE1EC' },
   rowDotHot: { backgroundColor: C.brand },
   rowText: { fontSize: 14, fontWeight: '500', color: C.ink },
