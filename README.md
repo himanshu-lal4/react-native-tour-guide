@@ -23,10 +23,12 @@ Works with Expo and React Native CLI. Zero native dependencies. New Architecture
 <p align="center"><sub>If this library saves you a sprint of edge cases, a ⭐ and a coffee keep it maintained.</sub></p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/himanshu-lal4/react-native-tour-guide/main/IOSDemo.gif" alt="React Native tour guide demo — auto shape-matching spotlight, interactive steps, auto-scroll, and safe-area-aware tooltips" width="420" />
+  <img src="https://raw.githubusercontent.com/himanshu-lal4/react-native-tour-guide/main/IOSDemo.gif" alt="React Native tour guide demo on iOS — live-blurred backdrop, custom tooltips, triangle/star/heart mask shapes, interactive steps, auto-scroll, and edge-aware tooltips" width="340" />
+  &nbsp;&nbsp;
+  <img src="https://raw.githubusercontent.com/himanshu-lal4/react-native-tour-guide/main/AndroidDemo.gif" alt="React Native tour guide demo on Android — recorded on a physical device: shape-matched spotlights, custom overlay tints, motion presets, and safe-area-aware tooltips" width="340" />
 </p>
 <p align="center">
-  <sub>Shape-matched spotlights, tap-through interactive steps, auto-scroll, and edge-aware tooltips — same rendering on iOS and Android.</sub>
+  <sub>iOS simulator · physical Android device — the same demo, every step a different feature: blurred backdrop, custom Figma-style tooltips, triangle/star/heart cutouts, interactive tap-through, auto-scroll, edge-aware flips.</sub>
 </p>
 
 ---

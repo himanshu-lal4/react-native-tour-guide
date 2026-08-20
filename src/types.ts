@@ -307,6 +307,16 @@ export interface SpotlightStyles {
    * skipped for custom paths (the hole jumps between steps).
    */
   maskPath?: SpotlightMaskPathFn;
+  /**
+   * Android + expo-blur only: real backdrop blurring on Android needs a ref to
+   * an `expo-blur` `BlurTargetView` wrapping the content behind the overlay.
+   * Wrap your screen content in `<BlurTargetView ref={r}>` and pass `r` here;
+   * without it, expo-blur on Android falls back to a soft tint. Ignored on iOS
+   * and with @react-native-community/blur (which blur the real backdrop
+   * directly).
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  blurTarget?: RefObject<any>;
 }
 
 /**

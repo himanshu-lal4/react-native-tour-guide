@@ -3425,6 +3425,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@react-native-masked-view/masked-view@npm:0.3.2":
+  version: 0.3.2
+  resolution: "@react-native-masked-view/masked-view@npm:0.3.2"
+  peerDependencies:
+    react: ">=16"
+    react-native: ">=0.57"
+  checksum: e35ab882148df3f9b71f04355d2fb1b24d6f2aaf29043f80758f398bdf905eed67734b36b072fa8b934923ff4e3d80ccb5e37d8376cb1825272078b96a21dadc
+  languageName: node
+  linkType: hard
+
 "@react-native/assets-registry@npm:0.81.5":
   version: 0.81.5
   resolution: "@react-native/assets-registry@npm:0.81.5"
@@ -4323,8 +4333,10 @@ __metadata:
   resolution: "@wrack/react-native-tour-guide-example@workspace:example"
   dependencies:
     "@expo/metro-runtime": ~56.0.15
+    "@react-native-masked-view/masked-view": 0.3.2
     "@wrack/react-native-tour-guide": "workspace:*"
     expo: ^56.0.0
+    expo-blur: ~56.0.4
     expo-status-bar: ~56.0.4
     react: 19.2.3
     react-dom: 19.2.3
@@ -7115,6 +7127,17 @@ __metadata:
     react: "*"
     react-native: "*"
   checksum: 063408a76d0e0ec4e38711b05995b1686ca2cb4fde8fbfeba9110abac3d547fe07da83b657592811e825f2e3de396cd4d66428ba27347af0f41cea5dcd513ca5
+  languageName: node
+  linkType: hard
+
+"expo-blur@npm:~56.0.4":
+  version: 56.0.4
+  resolution: "expo-blur@npm:56.0.4"
+  peerDependencies:
+    expo: "*"
+    react: "*"
+    react-native: "*"
+  checksum: f54949b9775739333f7d2c621ae6cb4f3e0e69ebaefc85cf0eb406923333044ec43666ccb8a87882407cc734daa000074d2b881f5772a846e870e9cc55e6d006
   languageName: node
   linkType: hard
 

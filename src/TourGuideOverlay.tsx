@@ -1303,6 +1303,11 @@ const TourGuideOverlay: React.FC = () => {
     // Touches pass through the hole to the real element (inline mode only —
     // in a Modal there is nothing underneath to receive them).
     interactive: currentStepData.interactive === true && config?.overlayMode === 'inline',
+    // Any blurred step in this tour → keep the blur subtree mounted throughout
+    // and cross-fade it, so blur↔no-blur step changes don't pay a mount hitch.
+    mountBlurLayer:
+      Boolean(config?.spotlightStyles?.enableBlur) ||
+      activeSteps.some((st) => st.spotlightStyles?.enableBlur === true),
     // Spotlights kept lit from earlier keepSpotlight steps.
     keptPaths,
   };
