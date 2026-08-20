@@ -15,18 +15,20 @@ Works with Expo and React Native CLI. Zero native dependencies. New Architecture
 📚 **[Documentation & guides](https://himanshu-lal4.github.io/react-native-tour-guide/)** · 📦 **[Install from npm](https://www.npmjs.com/package/@wrack/react-native-tour-guide)**
 
 <p align="center">
-  <a href="https://github.com/sponsors/himanshu-lal4"><picture><source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/GitHub_Sponsors-21262D?style=for-the-badge&logo=githubsponsors&logoColor=EA4AAA"><img src="https://img.shields.io/badge/GitHub_Sponsors-EAEEF2?style=for-the-badge&logo=githubsponsors&logoColor=EA4AAA" height="32" alt="Sponsor on GitHub" /></picture></a>
+  <a href="https://github.com/sponsors/himanshu-lal4"><img src="https://img.shields.io/badge/GitHub_Sponsors-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white" height="32" alt="Sponsor on GitHub" /></a>
   &nbsp;
-  <a href="https://buymeacoffee.com/wrack"><picture><source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/Buy_Me_a_Coffee-21262D?style=for-the-badge&logo=buymeacoffee&logoColor=FFDD00"><img src="https://img.shields.io/badge/Buy_Me_a_Coffee-EAEEF2?style=for-the-badge&logo=buymeacoffee&logoColor=FFDD00" height="32" alt="Buy Me a Coffee" /></picture></a>
+  <a href="https://buymeacoffee.com/wrack"><img src="https://img.shields.io/badge/Buy_Me_a_Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" height="32" alt="Buy Me a Coffee" /></a>
 </p>
 
 <p align="center"><sub>If this library saves you a sprint of edge cases, a ⭐ and a coffee keep it maintained.</sub></p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/himanshu-lal4/react-native-tour-guide/main/IOSDemo.gif" alt="React Native tour guide demo — auto shape-matching spotlight, interactive steps, auto-scroll, and safe-area-aware tooltips" width="420" />
+  <img src="https://raw.githubusercontent.com/himanshu-lal4/react-native-tour-guide/main/IOSDemo.gif" alt="React Native tour guide demo on iOS — live-blurred backdrop, custom tooltips, triangle/star/heart mask shapes, interactive steps, auto-scroll, and edge-aware tooltips" width="340" />
+  &nbsp;&nbsp;
+  <img src="https://raw.githubusercontent.com/himanshu-lal4/react-native-tour-guide/main/AndroidDemo.gif" alt="React Native tour guide demo on Android — recorded on a physical device: shape-matched spotlights, custom overlay tints, motion presets, and safe-area-aware tooltips" width="340" />
 </p>
 <p align="center">
-  <sub>Shape-matched spotlights, tap-through interactive steps, auto-scroll, and edge-aware tooltips — same rendering on iOS and Android.</sub>
+  <sub>iOS simulator · physical Android device — the same demo, every step a different feature: blurred backdrop, custom Figma-style tooltips, triangle/star/heart cutouts, interactive tap-through, auto-scroll, edge-aware flips.</sub>
 </p>
 
 ---

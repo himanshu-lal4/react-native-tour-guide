@@ -11,19 +11,35 @@ const AnimatedRect = Animated.createAnimatedComponent(Rect);
 const DEFAULT_SPOTLIGHT_STYLES: SpotlightStyles = {};
 
 // Resolve optional dependencies once at module scope
-let _resolvedBlurView: React.ComponentType<Record<string, unknown>> | null | undefined;
+interface BlurProvider {
+  Component: React.ComponentType<Record<string, unknown>>;
+  /** community: @react-native-community/blur; expo: expo-blur (works in Expo Go) */
+  kind: 'community' | 'expo';
+}
+let _resolvedBlur: BlurProvider | null | undefined;
 let _resolvedLinearGradient: React.ComponentType<Record<string, unknown>> | null | undefined;
 let _resolvedMaskedView: React.ComponentType<Record<string, unknown>> | null | undefined;
 
-const getBlurView = () => {
-  if (_resolvedBlurView === undefined) {
+const getBlurProvider = (): BlurProvider | null => {
+  if (_resolvedBlur === undefined) {
+    _resolvedBlur = null;
     try {
-      _resolvedBlurView = require('@react-native-community/blur').BlurView;
+      const community = require('@react-native-community/blur').BlurView;
+      if (community) _resolvedBlur = { Component: community, kind: 'community' };
     } catch {
-      _resolvedBlurView = null;
+      // fall through to expo-blur
+    }
+    if (!_resolvedBlur) {
+      try {
+        // expo-blur ships inside Expo Go, so blur works there without a dev build.
+        const expo = require('expo-blur').BlurView;
+        if (expo) _resolvedBlur = { Component: expo, kind: 'expo' };
+      } catch {
+        _resolvedBlur = null;
+      }
     }
   }
-  return _resolvedBlurView;
+  return _resolvedBlur;
 };
 
 const getLinearGradient = () => {
@@ -70,6 +86,14 @@ export interface SpotlightOverlayProps {
   /** How the spotlight travels between steps (default: 'morph') */
   motion?: SpotlightMotion;
   /**
+   * Keep the (expensive) blur subtree mounted even while the current step has
+   * blur disabled, cross-fading its opacity instead of mounting/unmounting at
+   * step boundaries — that mount is what caused a visible hitch when moving
+   * between blurred and unblurred steps. Set by TourGuideOverlay when any step
+   * in the tour enables blur.
+   */
+  mountBlurLayer?: boolean;
+  /**
    * Additional cutout subpaths that stay punched out of the backdrop —
    * spotlights kept lit from earlier steps (`step.keepSpotlight`). Purely
    * visual: press bands and the blur mask only consider the current spotlight.
@@ -95,6 +119,7 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
   onSpotlightPress,
   interactive = false,
   motion = 'morph',
+  mountBlurLayer = false,
   keptPaths,
 }) => {
   const {
@@ -111,6 +136,7 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
     pulseMinOpacity = 0.2,
     pulseMaxOpacity = 0.8,
     maskPath,
+    blurTarget,
   } = styles;
 
   // Unique mask IDs per instance to avoid SVG conflicts
@@ -130,6 +156,15 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
   const pulseOpacity = useRef(new Animated.Value(0)).current;
   // Whole-overlay opacity used by the 'fade' motion preset.
   const overlayFade = useRef(new Animated.Value(1)).current;
+  // Blur layer cross-fade (used with mountBlurLayer): fading beats remounting.
+  const blurFade = useRef(new Animated.Value(enableBlur ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.timing(blurFade, {
+      toValue: enableBlur ? 1 : 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+  }, [enableBlur, blurFade]);
   // Pulse visibility combined with the fade, so the pulse ring dips with the
   // backdrop instead of floating alone during a fade transition.
   const pulseVisible = useRef(Animated.multiply(pulseOpacity, overlayFade)).current;
@@ -507,9 +542,10 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
   }
 
   // Resolve optional libraries (cached at module scope)
-  const BlurView = enableBlur ? getBlurView() : null;
+  const wantsBlurLayer = enableBlur || mountBlurLayer;
+  const blurProvider = wantsBlurLayer ? getBlurProvider() : null;
   const LinearGradient = enableGradient ? getLinearGradient() : null;
-  const MaskedView = enableBlur && BlurView ? getMaskedView() : null;
+  const MaskedView = wantsBlurLayer && blurProvider ? getMaskedView() : null;
 
   // --- Cutout shape rendering helpers ---
   const renderRectCutout = (fill: string, stroke?: string, sw?: number) => (
@@ -536,43 +572,58 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
   // Optional masked blur/gradient backdrop — shared by both render branches so
   // interactive steps keep the same backdrop styling as everything else.
   const renderBlurLayer = () =>
-    enableBlur && BlurView && MaskedView ? (
-      <MaskedView
-        style={StyleSheet.absoluteFill}
-        maskElement={
-          <Svg height={coverHeight} width={coverWidth}>
-            <Defs>
-              <Mask id={maskIds.inverse}>
-                <Rect x="0" y="0" width={coverWidth} height={coverHeight} fill="white" />
-                {renderCutout('black')}
-              </Mask>
-            </Defs>
-            <Rect
-              x="0"
-              y="0"
-              width={coverWidth}
-              height={coverHeight}
-              fill="black"
-              mask={`url(#${maskIds.inverse})`}
-            />
-          </Svg>
-        }
-      >
-        <BlurView
+    wantsBlurLayer && blurProvider && MaskedView ? (
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: blurFade }]} pointerEvents="none">
+        <MaskedView
           style={StyleSheet.absoluteFill}
-          blurType="light"
-          blurAmount={blurAmount}
-          reducedTransparencyFallbackColor="white"
-        />
-        {enableGradient && LinearGradient ? (
-          <LinearGradient
-            colors={gradientColors}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-        ) : null}
-      </MaskedView>
+          maskElement={
+            <Svg height={coverHeight} width={coverWidth}>
+              <Defs>
+                <Mask id={maskIds.inverse}>
+                  <Rect x="0" y="0" width={coverWidth} height={coverHeight} fill="white" />
+                  {renderCutout('black')}
+                </Mask>
+              </Defs>
+              <Rect
+                x="0"
+                y="0"
+                width={coverWidth}
+                height={coverHeight}
+                fill="black"
+                mask={`url(#${maskIds.inverse})`}
+              />
+            </Svg>
+          }
+        >
+          {blurProvider.kind === 'community' ? (
+            <blurProvider.Component
+              style={StyleSheet.absoluteFill}
+              blurType="light"
+              blurAmount={blurAmount}
+              reducedTransparencyFallbackColor="white"
+            />
+          ) : (
+            // expo-blur: real blur on iOS out of the box. On Android real blur
+            // additionally needs spotlightStyles.blurTarget (a ref to an
+            // expo-blur BlurTargetView wrapping the app content); without it,
+            // Android degrades to a soft tint.
+            <blurProvider.Component
+              style={StyleSheet.absoluteFill}
+              intensity={Math.min(100, blurAmount * 2)}
+              tint="light"
+              {...(blurTarget ? { blurTarget, blurMethod: 'dimezisBlurView' } : {})}
+            />
+          )}
+          {enableGradient && LinearGradient ? (
+            <LinearGradient
+              colors={gradientColors}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+          ) : null}
+        </MaskedView>
+      </Animated.View>
     ) : null;
 
   if (pressBands) {

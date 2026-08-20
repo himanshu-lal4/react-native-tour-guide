@@ -397,9 +397,12 @@ describe('integrations', () => {
     it('a keepSpotlight tour cannot leak its layout into the next tour', async () => {
       await renderTour();
       // Tour A: single keepSpotlight step — nothing ever accumulates.
-      await start([step({ id: 'a', targetRef: measurableRef(10, 20, 100, 50), keepSpotlight: true })], {
-        motion: 'none',
-      });
+      await start(
+        [step({ id: 'a', targetRef: measurableRef(10, 20, 100, 50), keepSpotlight: true })],
+        {
+          motion: 'none',
+        }
+      );
       await act(async () => api.endTour());
 
       // Tour B: step 0 centered, then advance — the reconciliation must NOT
@@ -419,6 +422,31 @@ describe('integrations', () => {
       const m = json.match(/"d":"(M0,0 H[^"]+)"/);
       const holes = (m?.[1]?.match(/M/g) ?? []).length - 1;
       expect(holes).toBe(1); // only B's current hole — no ghost from tour A
+    });
+  });
+
+  describe('per-step spotlightStyles', () => {
+    it('merges step styles over config styles for that step only', async () => {
+      await renderTour();
+      await start(
+        [
+          step({ id: 'a', title: 'First', targetRef: measurableRef() }),
+          step({
+            id: 'b',
+            title: 'Second',
+            targetRef: measurableRef(),
+            spotlightStyles: { overlayOpacity: 0.91 },
+          }),
+        ],
+        { spotlightStyles: { overlayOpacity: 0.33 }, motion: 'none' }
+      );
+      expect(JSON.stringify(screen.toJSON())).toContain('"fillOpacity":0.33');
+
+      await act(async () => api.nextStep());
+      await flush(600);
+      const json = JSON.stringify(screen.toJSON()) ?? '';
+      expect(json).toContain('"fillOpacity":0.91'); // step override wins
+      expect(json).not.toContain('"fillOpacity":0.33');
     });
   });
 
