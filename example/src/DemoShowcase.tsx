@@ -22,6 +22,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
+import { BlurTargetView } from 'expo-blur';
 import {
   TourGuideOverlay,
   TourGuideProvider,
@@ -32,7 +33,10 @@ import {
 } from '@wrack/react-native-tour-guide';
 import type { TooltipProps, TourGuideConfig, TourStep } from '@wrack/react-native-tour-guide';
 
-const AUTO_PLAY = true;
+// The demo no longer hijacks the screen on load — start it from the buttons
+// under the hero card (auto-play, or step through at your own pace). Recording
+// scripts can flip AUTO_START to capture the reel hands-free.
+const AUTO_START = false;
 const PACE = 2000;
 
 // ─── Design tokens: neutral demo chrome, indigo accent ───────────────────────
@@ -310,6 +314,8 @@ function Demo() {
   // tracking — spread onto the ScrollView below.
   const { scrollProps } = useTourScroll();
 
+  // Android real blur: expo-blur blurs the content inside this BlurTargetView.
+  const blurTargetRef = useRef(null);
   const tapRef = useRef(null);
   const triRef = useRef(null);
   const hexRef = useRef(null);
@@ -323,10 +329,11 @@ function Demo() {
   const [tab, setTab] = useState(0);
   const [tapped, setTapped] = useState(false);
 
-  const auto = AUTO_PLAY ? PACE : undefined;
   const onTapStep = activeSteps[currentStep]?.id === 'tap';
 
-  const steps: TourStep[] = [
+  const makeSteps = (autoPlay: boolean): TourStep[] => {
+    const auto = autoPlay ? PACE : undefined;
+    return [
     {
       id: 'avatar',
       targetId: 'avatar', // declarative — <TourTarget id="avatar"> below, no refs
@@ -343,7 +350,8 @@ function Demo() {
       description:
         'Themeable dots and buttons out of the box — over a LIVE-BLURRED backdrop (optional blur, works in Expo Go).',
       // Per-step blurred backdrop: expo-blur is auto-detected.
-      spotlightStyles: { enableBlur: true, blurAmount: 22, overlayOpacity: 0.45 },
+      // Gentle frost: the content behind should stay recognisable, not smeared.
+      spotlightStyles: { enableBlur: true, blurAmount: 9, overlayOpacity: 0.35 },
       autoAdvance: auto,
     },
     {
@@ -444,6 +452,7 @@ function Demo() {
       autoAdvance: auto,
     },
   ];
+  };
 
   const config: TourGuideConfig = {
     ...theme,
@@ -463,28 +472,34 @@ function Demo() {
     extraInsets: { bottom: 72 },
     spotlightStyles: {
       ...theme.spotlightStyles,
-      // Pulse is opt-in PER STEP via step.spotlightStyles (steps 3 and 5).
+      // Pulse is opt-in PER STEP via step.spotlightStyles.
       pulseColor: '#FFFFFF',
       pulseWidth: 2,
       pulseDuration: 1400,
+      // Lets expo-blur blur the real content on Android too.
+      blurTarget: blurTargetRef,
     },
   };
 
-  const begin = useCallback(() => {
-    setTapped(false);
-    startTour(steps, config);
+  const begin = useCallback(
+    (autoPlay: boolean) => {
+      setTapped(false);
+      startTour(makeSteps(autoPlay), config);
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startTour]);
+    [startTour]
+  );
 
   useEffect(() => {
-    if (!AUTO_PLAY) return undefined;
-    const t = setTimeout(begin, 900);
+    if (!AUTO_START) return undefined;
+    const t = setTimeout(() => begin(true), 900);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
     <View style={s.root}>
+      <BlurTargetView ref={blurTargetRef} style={s.blurHost}>
       <SafeAreaView style={s.safe} edges={['top']}>
         <ScrollView
           ref={scrollRef}
@@ -517,10 +532,22 @@ function Demo() {
                 <View style={s.heroPill}>
                   <Text style={s.heroPillText}>11 steps</Text>
                 </View>
-                <Text style={s.heroHint}>sit back — it plays itself</Text>
+                <Text style={s.heroHint}>auto-play, or drive it yourself</Text>
               </View>
             </View>
           </TourTarget>
+
+          {/* Start controls — you drive the demo */}
+          {!isActive ? (
+            <View style={s.startRow}>
+              <Pressable style={[s.startBtn, s.startPrimary]} onPress={() => begin(true)}>
+                <Text style={s.startPrimaryText}>▶ Auto-play demo</Text>
+              </Pressable>
+              <Pressable style={s.startBtn} onPress={() => begin(false)}>
+                <Text style={s.startText}>Step through</Text>
+              </Pressable>
+            </View>
+          ) : null}
 
           {/* Interactive pill */}
           <View style={s.pillRow}>
@@ -588,13 +615,11 @@ function Demo() {
             ))}
           </View>
 
-          {!isActive ? (
-            <Pressable style={s.cta} onPress={begin}>
-              <Text style={s.ctaText}>{AUTO_PLAY ? 'Replay tour' : 'Start tour'}</Text>
-            </Pressable>
-          ) : null}
+
         </ScrollView>
       </SafeAreaView>
+
+      </BlurTargetView>
 
       {/* Tab bar */}
       <View style={[s.tabbar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
@@ -628,6 +653,7 @@ export default function DemoShowcase() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
+  blurHost: { flex: 1 },
   safe: { flex: 1 },
   scroll: { paddingHorizontal: 20, paddingBottom: 32 },
 
@@ -739,6 +765,20 @@ const s = StyleSheet.create({
   rowDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#DDE1EC' },
   rowDotHot: { backgroundColor: C.brand },
   rowText: { fontSize: 14, fontWeight: '500', color: C.ink },
+
+  startRow: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  startBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 16,
+    alignItems: 'center',
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: '#DDE1EC',
+  },
+  startPrimary: { backgroundColor: C.ink, borderColor: C.ink },
+  startPrimaryText: { color: '#FFFFFF', fontWeight: '800', fontSize: 14.5 },
+  startText: { color: C.ink, fontWeight: '700', fontSize: 14.5 },
 
   cta: {
     marginTop: 24,
