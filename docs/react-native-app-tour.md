@@ -1,7 +1,7 @@
 ---
 layout: page
-title: "How to Build a React Native App Tour"
-description: "Step-by-step guide to building a React Native app tour with a shape-matching spotlight, auto-scroll to off-screen steps, show-once persistence, and themeable tooltips. Works in Expo Go with zero native dependencies."
+title: "How to Build an App Tour"
+description: "Build a React Native app tour with a shape-matching spotlight, auto-scroll, show-once persistence and themeable tooltips. Works in Expo Go."
 permalink: /react-native-app-tour/
 ---
 

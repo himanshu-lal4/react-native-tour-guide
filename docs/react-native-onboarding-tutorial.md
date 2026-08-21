@@ -1,7 +1,7 @@
 ---
 layout: page
-title: "React Native Onboarding Tutorial — Build a User Onboarding Flow"
-description: "Build a first-run user onboarding flow in React Native: spotlight key actions, show the tutorial only once, branch steps per user segment, and track completion. Expo and RN CLI, zero native dependencies."
+title: "Onboarding Tutorial Flow"
+description: "Build a first-run onboarding flow in React Native: spotlight key actions, show the tutorial once, branch per user segment, track completion."
 permalink: /react-native-onboarding-tutorial/
 ---
 

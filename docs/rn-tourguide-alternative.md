@@ -1,7 +1,7 @@
 ---
 layout: page
-title: "rn-tourguide Alternative — Honest Comparison"
-description: "An honest comparison of rn-tourguide (xcarpentier) and @wrack/react-native-tour-guide: declarative zones vs refs, shape matching, auto-scroll, maturity, and how to migrate between them."
+title: "rn-tourguide Alternative"
+description: "rn-tourguide vs react-native-tour-guide: declarative zones vs refs, shape matching, auto-scroll, maturity, and how to migrate between them."
 permalink: /rn-tourguide-alternative/
 ---
 

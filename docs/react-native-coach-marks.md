@@ -1,7 +1,7 @@
 ---
 layout: page
-title: "React Native Coach Marks & Feature Discovery"
-description: "Add coach marks and feature discovery hints to a React Native app: spotlight a single control, pulse the highlight, show it once per user, and dismiss on backdrop tap. Expo compatible, zero native dependencies."
+title: "Coach Marks & Feature Discovery"
+description: "Add coach marks and feature-discovery hints: spotlight a control, pulse the highlight, show it once per user, dismiss on backdrop tap. Expo compatible."
 permalink: /react-native-coach-marks/
 ---
 

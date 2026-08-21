@@ -1,7 +1,7 @@
 ---
 layout: page
-title: "React Native Tour Guide — FAQ"
-description: "Answers to common questions about building React Native app tours, walkthroughs, and coach marks: Expo support, New Architecture, customization, dependencies, and show-once tours."
+title: "FAQ"
+description: "Expo support, New Architecture, customization, dependencies, and show-once behaviour for React Native app tours, walkthroughs and coach marks."
 permalink: /faq/
 ---
 

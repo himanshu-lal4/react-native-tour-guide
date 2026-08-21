@@ -1,7 +1,7 @@
 ---
 layout: page
-title: "Expo App Tour & Onboarding — Works in Expo Go, No Dev Build"
-description: "Add an app tour, walkthrough, or onboarding flow to an Expo app that runs in Expo Go — no custom development build, no prebuild, no native modules. Only react-native-svg is required."
+title: "Expo App Tour — Works in Expo Go"
+description: "Add an app tour, walkthrough or onboarding flow to an Expo app that runs in Expo Go — no dev build, no native modules, only react-native-svg."
 permalink: /expo-onboarding-tour/
 ---
 
