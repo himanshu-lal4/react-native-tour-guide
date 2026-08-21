@@ -1,7 +1,7 @@
 ---
 layout: page
-title: "React Native Walkthrough Library — Build a Guided Walkthrough"
-description: "How to build a React Native walkthrough with a shape-matching spotlight, auto-scroll to off-screen steps, progress dots, and skippable steps. Works in Expo and React Native CLI with zero native dependencies."
+title: "Build a Guided Walkthrough"
+description: "Build a React Native walkthrough with a shape-matching spotlight, auto-scroll, progress dots and skippable steps. Expo and RN CLI compatible."
 permalink: /react-native-walkthrough/
 ---
 

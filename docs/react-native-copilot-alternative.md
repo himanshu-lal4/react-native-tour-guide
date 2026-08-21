@@ -1,7 +1,7 @@
 ---
 layout: page
-title: "A react-native-copilot Alternative — Comparison"
-description: "Comparing React Native tour libraries: react-native-copilot, rn-tourguide, react-native-spotlight-tour, and react-native-tour-guide. Shape-matching spotlight, auto-scroll, Expo Go support, and zero native dependencies."
+title: "react-native-copilot Alternative"
+description: "react-native-copilot, rn-tourguide, react-native-spotlight-tour and react-native-tour-guide compared: spotlight, auto-scroll, Expo Go support."
 permalink: /react-native-copilot-alternative/
 ---
 

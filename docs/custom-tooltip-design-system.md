@@ -1,7 +1,7 @@
 ---
 layout: page
-title: "Bring Your Own Tooltip UI — React Native Tour Guide"
-description: "Use the tour engine with your own design system: restyle the built-in tooltip, swap individual buttons with component slots, or render a fully custom Figma design against the stable TooltipProps contract."
+title: "Bring Your Own Tooltip UI"
+description: "Use the tour engine with your own design system: restyle the built-in tooltip, swap buttons with component slots, or render a fully custom tooltip."
 permalink: /custom-tooltip-design-system/
 ---
 

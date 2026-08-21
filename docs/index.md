@@ -1,7 +1,7 @@
 ---
 layout: home
-title: "React Native Tour Guide — App Tours, Walkthroughs & Coach Marks"
-description: "Lightweight React Native library for app tours, walkthroughs, onboarding, and coach marks. Auto shape-matching spotlight, smart auto-scroll, themeable tooltips. Expo & RN CLI, zero native deps, TypeScript."
+title: "App Tours, Walkthroughs & Coach Marks"
+description: "Lightweight React Native library for app tours, walkthroughs, onboarding and coach marks: shape-matching spotlight, auto-scroll, themeable tooltips."
 ---
 
 # React Native Tour Guide

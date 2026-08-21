@@ -1,6 +1,6 @@
 ---
 layout: page
-title: "Getting Started — React Native Tour Guide"
+title: "Getting Started"
 description: "Install and set up a React Native app tour in minutes: wrap your app in TourGuideProvider, add TourGuideOverlay, and call startTour with your steps."
 permalink: /getting-started/
 ---
