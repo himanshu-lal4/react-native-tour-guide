@@ -638,7 +638,7 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
           <Svg height={coverHeight} width={coverWidth} style={StyleSheet.absoluteFill}>
             <Path
               ref={overlayPathRef}
-              d={overlayPathD}
+              d={overlayPathD || buildOverlayPath('')}
               fill={overlayColor}
               fillOpacity={overlayOpacity}
               fillRule="evenodd"
@@ -693,7 +693,7 @@ const SpotlightOverlay: React.FC<SpotlightOverlayProps> = ({
           <Svg height={coverHeight} width={coverWidth} style={StyleSheet.absoluteFill}>
             <Path
               ref={overlayPathRef}
-              d={overlayPathD}
+              d={overlayPathD || buildOverlayPath('')}
               fill={overlayColor}
               fillOpacity={overlayOpacity}
               fillRule="evenodd"
