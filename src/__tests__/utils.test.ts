@@ -222,3 +222,42 @@ describe('extractBorderRadius', () => {
     expect(extractBorderRadius({ borderRadius: '50%' })).toBe(0);
   });
 });
+
+describe('isAndroidEdgeToEdge', () => {
+  const { Platform, TurboModuleRegistry } = require('react-native');
+  const os = Platform.OS;
+  afterEach(() => {
+    Platform.OS = os;
+    jest.restoreAllMocks();
+  });
+  const { isAndroidEdgeToEdge } = require('../utils');
+
+  it('is false off Android', () => {
+    Platform.OS = 'ios';
+    expect(isAndroidEdgeToEdge()).toBe(false);
+  });
+
+  it('is true when react-native-edge-to-edge is installed', () => {
+    Platform.OS = 'android';
+    jest
+      .spyOn(TurboModuleRegistry, 'get')
+      .mockImplementation((name: unknown) => (name === 'RNEdgeToEdge' ? {} : null));
+    expect(isAndroidEdgeToEdge()).toBe(true);
+  });
+
+  it('follows the edgeToEdgeEnabled Gradle property', () => {
+    Platform.OS = 'android';
+    jest
+      .spyOn(TurboModuleRegistry, 'get')
+      .mockImplementation((name: unknown) =>
+        name === 'DeviceInfo' ? { getConstants: () => ({ isEdgeToEdge: true }) } : null
+      );
+    expect(isAndroidEdgeToEdge()).toBe(true);
+  });
+
+  it('is false on an Android app that is not edge-to-edge', () => {
+    Platform.OS = 'android';
+    jest.spyOn(TurboModuleRegistry, 'get').mockReturnValue(null);
+    expect(isAndroidEdgeToEdge()).toBe(false);
+  });
+});
