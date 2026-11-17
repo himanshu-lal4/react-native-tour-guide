@@ -1,4 +1,4 @@
-import { StyleSheet, Platform, StatusBar } from 'react-native';
+import { StyleSheet, Platform, StatusBar, TurboModuleRegistry } from 'react-native';
 import type { ViewStyle } from 'react-native';
 
 import type {
@@ -81,6 +81,25 @@ const getAutoInsets = (): EdgeInsets => {
   // the bottom without the safe-area lib, so consumers should pass `insets`.
   const top = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0;
   return { top, bottom: 0, left: 0, right: 0 };
+};
+
+/**
+ * Whether an Android app draws edge-to-edge (behind the status bar). That's the
+ * default since React Native 0.81 and Expo SDK 54, and also what
+ * react-native-edge-to-edge does. Same check as react-native-is-edge-to-edge,
+ * inlined to keep the library dependency-free. Always false off Android.
+ */
+export const isAndroidEdgeToEdge = (): boolean => {
+  if (Platform.OS !== 'android') return false;
+  try {
+    if (TurboModuleRegistry.get('RNEdgeToEdge')) return true;
+    const deviceInfo = TurboModuleRegistry.get('DeviceInfo') as {
+      getConstants?: () => { isEdgeToEdge?: boolean };
+    } | null;
+    return deviceInfo?.getConstants?.().isEdgeToEdge === true;
+  } catch {
+    return false;
+  }
 };
 
 /**

@@ -19,6 +19,7 @@ import {
   extractBorderRadius,
   resolveInsets,
   resolveSafeAreaInsets,
+  isAndroidEdgeToEdge,
   scrollRefToY,
   isLightColor,
 } from './utils';
@@ -196,8 +197,8 @@ const TourGuideOverlay: React.FC = () => {
     [config?.insets, config?.extraInsets]
   );
 
-  // On Android, measureInWindow returns coordinates relative to the app content
-  // area, which sits BELOW the status bar — but the overlay Modal is
+  // On Android without edge-to-edge, measureInWindow returns coordinates relative
+  // to the app content area, which sits BELOW the status bar — but the overlay Modal is
   // statusBarTranslucent and spans the full screen from y=0. So we add the
   // (dp-correct) status-bar height to align the spotlight with the real element.
   // iOS measureInWindow already uses full-screen coordinates, so no offset.
@@ -232,6 +233,10 @@ const TourGuideOverlay: React.FC = () => {
       return -inlineOriginY.current;
     }
     if (Platform.OS !== 'android') return 0;
+    // Edge-to-edge apps (the default since RN 0.81) already measure from the top
+    // of the screen, like the Modal, so adding the status bar would push every
+    // spotlight down by its height.
+    if (isAndroidEdgeToEdge()) return 0;
     return resolveSafeAreaInsets({ insets: config?.insets }).top;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config?.insets, config?.overlayMode, inlineOriginVersion]);
